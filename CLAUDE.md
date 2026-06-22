@@ -10,6 +10,13 @@ must be on PATH) is the execution truth layer; AEM never runs a raw command — 
 `rtk <subcommand>` and normalizes what RTK returns. If `rtk` is not on PATH, `aem run` fails at
 spawn — that dependency is functional, not optional.
 
+## Vendored dependencies
+
+`rtk` and `graphify` are git submodules under `vendor/`. Clone with `--recursive` (or
+`git submodule update --init --recursive`). They are vendored as source; the build does **not** yet
+compile or bundle them — AEM still spawns `rtk` from `PATH`. Producing a single self-contained
+binary from `vendor/rtk` is deferred.
+
 ## Commands
 
 ```bash

@@ -51,13 +51,22 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 ## Installation
 
-**Requirements:** a Rust toolchain and the [`rtk`](https://github.com/rtk-ai/rtk) binary on your
-`PATH` (the dependency on `rtk` is functional, not optional).
+**Requirements:** a Rust toolchain. [rtk](https://github.com/rtk-ai/rtk) and
+[graphify](https://github.com/safishamsi/graphify) are vendored as git submodules under `vendor/`,
+so clone recursively:
 
 ```bash
+git clone --recursive <repo>
+# or, in an existing clone:
+git submodule update --init --recursive
+
 cargo build --release
 # binary at target/release/aem
 ```
+
+> Note: vendoring puts the sources in-tree, but the build doesn't compile/bundle them yet — AEM
+> currently still spawns `rtk` from your `PATH`. Building a single self-contained binary from
+> `vendor/rtk` is a follow-up (see Roadmap).
 
 ## Usage
 
@@ -149,7 +158,9 @@ Deliberately out of scope for v1 — added when there's a consumer that needs th
 - **MCP server front-end** — agents calling AEM natively as tools. A new dispatch path over the
   same pipeline, not a rewrite.
 - **LLM-backed `plan-stack`** — reuse the `--llm` path for stack recommendations.
-- **Persisted execution graph** — command/dependency/failure trace.
+- **Persisted execution graph** — command/dependency/failure trace (vendored [graphify](vendor/graphify)).
+- **Single self-contained binary** — build `vendor/rtk` in a cargo workspace and have AEM use the
+  vendored binary instead of requiring `rtk` on `PATH`, so there's nothing to install separately.
 
 ## License
 
