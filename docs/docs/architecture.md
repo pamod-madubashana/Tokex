@@ -40,6 +40,14 @@ Set via [`tokex setup`](setup), applied per run:
 - The 2-threads + mpsc model is deliberate; async only if Tokex ever multiplexes many concurrent
   executions.
 
+## graphify code map
+
+tokex keeps a [graphify](https://github.com/safishamsi/graphify) code map fresh so agents only
+**read** it (`graphify-out/`) instead of spending turns updating it. After a code-changing
+`tokex run`, tokex fires a background `graphify update .` (Python, AST-only — no token cost);
+read-only commands skip it. graphifyy is auto-installed once. `tokex graph` forces a refresh; toggle
+with `graph_auto` in [Setup](setup).
+
 ## Vendored dependencies
 
 `rtk` and `graphify` are pinned git submodules under `vendor/`. `cargo build` builds `tokex` and

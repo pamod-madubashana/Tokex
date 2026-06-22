@@ -84,9 +84,19 @@ post-install via `tokex setup` (interactive `inquire` prompts) — **not** a pro
 The call is best-effort: a network/parse failure prints `(llm skipped: …)` and never changes the
 exit code.
 
+## graphify code map (`graphify.rs`)
+
+tokex keeps a graphify code map fresh so agents only **read** it (`graphify-out/GRAPH_REPORT.md`,
+`graphify-out/wiki/`) and never spend a turn updating it. graphify is a Python tool
+(`pip install graphifyy`, invoked as `python -m graphify update .`, AST-only — no token cost).
+After a **code-changing** `tokex run` (read-only commands like `git status` skip — see
+`touches_code`), tokex fires a background `graphify update .`; it auto-installs graphifyy once
+(cached via a `.graphify-ok` marker in the data dir). All best-effort — never blocks or fails a run.
+`tokex graph` forces a blocking refresh. Gated by `graph_auto` in config (`tokex setup`).
+
 ## Out of scope (deferred, do not add speculatively)
 
-LLM-backed `plan-stack` and a persisted execution graph.
+LLM-backed `plan-stack`.
 
 ## Commit & attribution rules (must follow)
 

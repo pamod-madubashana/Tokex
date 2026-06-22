@@ -185,7 +185,7 @@ See [CLAUDE.md](CLAUDE.md) for architecture and contributor rules.
 Deliberately out of scope for v1 — added when there's a consumer that needs them:
 
 - **LLM-backed `plan-stack`** — reuse the `--llm` path for stack recommendations.
-- **Persisted execution graph** — command/dependency/failure trace (vendored [graphify](vendor/graphify)).
+- **Persisted execution graph** — command/dependency/failure trace of tokex runs themselves.
 - **Single self-contained binary** — build `vendor/rtk` in a cargo workspace and have Tokex use the
   vendored binary instead of requiring `rtk` on `PATH`, so there's nothing to install separately.
 
