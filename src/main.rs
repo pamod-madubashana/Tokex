@@ -5,6 +5,7 @@
 mod config;
 mod intent;
 mod llm;
+mod mcp;
 mod normalize;
 mod orchestrate;
 mod plan;
@@ -40,6 +41,8 @@ enum Cmd {
     },
     /// Interactive setup: choose provider, enter API key, pick modes.
     Setup,
+    /// Run as an MCP server over stdio (for agents that call tools natively).
+    Mcp,
 }
 
 fn main() {
@@ -65,6 +68,7 @@ fn main() {
             }
             return;
         }
+        Some(Cmd::Mcp) => mcp::serve(),
         // No subcommand: read an intent as JSON from stdin (pipe mode).
         None => {
             if io::stdin().is_terminal() {
