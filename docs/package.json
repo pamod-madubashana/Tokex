@@ -1,0 +1,18 @@
+{
+  "name": "tokex-docs",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "swizzle": "docusaurus swizzle"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.10.1",
+    "@docusaurus/theme-classic": "^3.10.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
