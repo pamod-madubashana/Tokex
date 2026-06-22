@@ -56,9 +56,9 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 tokex install-rtk
 ```
 
-This fetches the latest `rtk` for your OS/arch from
-[rtk-ai/rtk releases](https://github.com/rtk-ai/rtk/releases/latest) and installs it into Tokex's
-data dir, which Tokex checks automatically. So you can ship just `tokex` and let it pull its backend.
+This fetches the `rtk` release **this build was tested against** (a pinned version, not `latest`,
+so a breaking rtk release can't surprise you) for your OS/arch and installs it into Tokex's data
+dir, which Tokex checks automatically. So you can ship just `tokex` and let it pull its backend.
 
 **Build from source instead:** a Rust toolchain. [rtk](https://github.com/rtk-ai/rtk) and
 [graphify](https://github.com/safishamsi/graphify) are vendored as git submodules under `vendor/`,

@@ -6,7 +6,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const BASE: &str = "https://github.com/rtk-ai/rtk/releases/latest/download";
+/// rtk release pinned to the version this build of Tokex was tested against. Bump deliberately —
+/// never `latest`, so a breaking rtk release can't silently break every install.
+const RTK_VERSION: &str = "v0.42.4";
+
+fn download_url(asset: &str) -> String {
+    format!("https://github.com/rtk-ai/rtk/releases/download/{RTK_VERSION}/{asset}")
+}
 
 pub fn rtk_bin_name() -> &'static str {
     if cfg!(windows) {
@@ -41,8 +47,8 @@ fn asset_name() -> Result<&'static str, String> {
 /// Download + extract the latest rtk and install it into the data dir. Returns the install path.
 pub fn install() -> Result<PathBuf, String> {
     let asset = asset_name()?;
-    let url = format!("{BASE}/{asset}");
-    eprintln!("Downloading {url} …");
+    let url = download_url(asset);
+    eprintln!("Downloading rtk {RTK_VERSION} ({asset}) …");
 
     let tmp = std::env::temp_dir().join(format!("tokex-rtk-{}", std::process::id()));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
@@ -116,6 +122,13 @@ mod tests {
     #[test]
     fn unsupported_platform_is_none() {
         assert_eq!(asset_for("redox", "sparc"), None);
+    }
+
+    #[test]
+    fn url_is_pinned_not_latest() {
+        let u = download_url("rtk-x86_64-pc-windows-msvc.zip");
+        assert!(u.contains("/releases/download/v0.42.4/"));
+        assert!(!u.contains("latest"));
     }
 
     #[test]
