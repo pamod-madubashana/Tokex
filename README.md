@@ -50,7 +50,17 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 ## Installation
 
-**Requirements:** a Rust toolchain. [rtk](https://github.com/rtk-ai/rtk) and
+**Get rtk without building it** — Tokex can download the matching rtk release itself:
+
+```bash
+tokex install-rtk
+```
+
+This fetches the latest `rtk` for your OS/arch from
+[rtk-ai/rtk releases](https://github.com/rtk-ai/rtk/releases/latest) and installs it into Tokex's
+data dir, which Tokex checks automatically. So you can ship just `tokex` and let it pull its backend.
+
+**Build from source instead:** a Rust toolchain. [rtk](https://github.com/rtk-ai/rtk) and
 [graphify](https://github.com/safishamsi/graphify) are vendored as git submodules under `vendor/`,
 so clone recursively:
 

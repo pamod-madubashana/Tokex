@@ -30,15 +30,20 @@ enum Msg {
     Done,
 }
 
-/// Resolve the rtk binary: prefer one vendored next to our own exe (workspace build drops both in
-/// the same target dir), else fall back to `rtk` on PATH.
+/// Resolve the rtk binary, in order: next to our own exe (bundled/workspace build), then the
+/// downloaded copy in the data dir (`tokex install-rtk`), then `rtk` on PATH.
 fn rtk_path() -> std::path::PathBuf {
-    let name = if cfg!(windows) { "rtk.exe" } else { "rtk" };
+    let name = crate::install::rtk_bin_name();
     if let Ok(exe) = std::env::current_exe() {
         if let Some(cand) = exe.parent().map(|d| d.join(name)) {
             if cand.is_file() {
                 return cand;
             }
+        }
+    }
+    if let Some(cand) = crate::install::rtk_install_path() {
+        if cand.is_file() {
+            return cand;
         }
     }
     std::path::PathBuf::from("rtk")
@@ -79,7 +84,7 @@ pub fn run(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("failed to spawn rtk (is it on PATH?): {e}"))?;
+        .map_err(|e| format!("failed to spawn rtk (run `tokex install-rtk`, or put rtk on PATH): {e}"))?;
 
     let (tx, rx) = mpsc::channel();
     let reader = |ch: Channel, pipe: Option<Box<dyn std::io::Read + Send>>, tx: mpsc::Sender<Msg>| {

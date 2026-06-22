@@ -5,6 +5,21 @@ title: Installation
 
 # Installation
 
+## Let Tokex fetch rtk
+
+Tokex needs the `rtk` binary. The easiest way is to let Tokex download the matching release itself:
+
+```bash
+tokex install-rtk
+```
+
+This grabs the latest `rtk` for your OS/arch from
+[rtk-ai/rtk releases](https://github.com/rtk-ai/rtk/releases/latest) and installs it into Tokex's
+data dir (`%APPDATA%\tokex` / `~/.local/share/tokex`), which Tokex checks automatically. Ship just
+`tokex` and let it pull its backend.
+
+Tokex resolves `rtk` in this order: next to its own binary → the data dir (downloaded) → `PATH`.
+
 ## Prebuilt binaries
 
 Grab the archive for your platform from [Downloads](downloads). Each archive contains **both**

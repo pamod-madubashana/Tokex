@@ -3,6 +3,7 @@
 //! the stream. Tokex does not own execution; RTK does.
 
 mod config;
+mod install;
 mod intent;
 mod llm;
 mod mcp;
@@ -43,6 +44,8 @@ enum Cmd {
     Setup,
     /// Run as an MCP server over stdio (for agents that call tools natively).
     Mcp,
+    /// Download the latest rtk release for this OS into the tokex data dir.
+    InstallRtk,
 }
 
 fn main() {
@@ -69,6 +72,16 @@ fn main() {
             return;
         }
         Some(Cmd::Mcp) => mcp::serve(),
+        Some(Cmd::InstallRtk) => {
+            match install::install() {
+                Ok(path) => println!("rtk installed at {}", path.display()),
+                Err(e) => {
+                    eprintln!("tokex: install-rtk failed: {e}");
+                    exit(1);
+                }
+            }
+            return;
+        }
         // No subcommand: read an intent as JSON from stdin (pipe mode).
         None => {
             if io::stdin().is_terminal() {

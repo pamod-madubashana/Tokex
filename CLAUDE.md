@@ -10,12 +10,16 @@ must be on PATH) is the execution truth layer; Tokex never runs a raw command �
 `rtk <subcommand>` and normalizes what RTK returns. If `rtk` is not on PATH, `tokex run` fails at
 spawn — that dependency is functional, not optional.
 
-## Vendored dependencies
+## Getting rtk
 
-`rtk` and `graphify` are git submodules under `vendor/`. Clone with `--recursive` (or
-`git submodule update --init --recursive`). They are vendored as source; the build does **not** yet
-compile or bundle them — Tokex still spawns `rtk` from `PATH`. Producing a single self-contained
-binary from `vendor/rtk` is deferred.
+`rtk_path()` (in `orchestrate.rs`) resolves rtk in order: next to the tokex binary → the data dir →
+`PATH`. Three ways to provide it:
+- `tokex install-rtk` (`install.rs`) downloads the matching `rtk-ai/rtk` release for the current
+  OS/arch into the data dir (extracted via system `tar`).
+- `cargo build` builds the vendored `vendor/rtk` next to tokex (workspace `default-members`).
+- a system-installed `rtk` on `PATH`.
+
+`rtk` and `graphify` are pinned git submodules under `vendor/`; clone with `--recursive`.
 
 ## Commands
 
