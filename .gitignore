@@ -1,6 +1,7 @@
 /target
 Cargo.lock
 tokex-graph.json
+graphify-out/
 docs/node_modules
 docs/build
 docs/.docusaurus

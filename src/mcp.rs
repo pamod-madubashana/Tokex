@@ -120,6 +120,9 @@ fn tools_call(params: &Value, cfg: &Config) -> Value {
     let mut human = io::sink();
     match orchestrate::run(&intent, &mut machine, &mut human, llm_cfg.as_ref(), &opts) {
         Ok(code) => {
+            if cfg.graph_auto {
+                crate::graphify::auto_update(&intent.command);
+            }
             let events: Vec<Value> = String::from_utf8_lossy(&machine)
                 .lines()
                 .filter_map(|l| serde_json::from_str::<Value>(l).ok())

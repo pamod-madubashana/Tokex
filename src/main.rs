@@ -3,6 +3,7 @@
 //! the stream. Tokex does not own execution; RTK does.
 
 mod config;
+mod graphify;
 mod install;
 mod intent;
 mod llm;
@@ -51,6 +52,8 @@ enum Cmd {
     Mcp,
     /// Pre-fetch the pinned rtk release for this OS (also happens automatically on first run).
     InstallRtk,
+    /// Refresh the graphify code map now (`graphify update .`).
+    Graph,
 }
 
 fn main() {
@@ -84,6 +87,13 @@ fn main() {
                     eprintln!("tokex: install-rtk failed: {e}");
                     exit(1);
                 }
+            }
+            return;
+        }
+        Some(Cmd::Graph) => {
+            if let Err(e) = graphify::update_blocking() {
+                eprintln!("tokex: graph update failed: {e}");
+                exit(1);
             }
             return;
         }
@@ -133,7 +143,12 @@ fn main() {
     };
 
     match orchestrate::run(&intent, &mut out, &mut err, llm_cfg.as_ref(), &opts) {
-        Ok(code) => exit(code),
+        Ok(code) => {
+            if cfg.graph_auto {
+                graphify::auto_update(&intent.command);
+            }
+            exit(code);
+        }
         Err(e) => {
             eprintln!("tokex: {e}");
             exit(1);
