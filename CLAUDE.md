@@ -58,15 +58,21 @@ stdin, a JSON intent.
 - Keep it sync. The 2-threads+mpsc model is deliberate; reach for async only if Tokex ever
   multiplexes many concurrent execs.
 
-## LLM compression (`--llm`, opt-in)
+## Config & modes (`tokex setup`)
 
-`tokex run --llm "<cmd>"` sends the captured (RTK-filtered) output to an OpenAI-compatible
-chat-completions endpoint (`llm.rs`) and emits one extra `{"type":"insight", ...}` event
-(`status/root_cause/important_errors/suggested_fix`) — the agent reads that instead of full logs.
-Config is env-only (`TOKEX_LLM_URL`/`TOKEX_LLM_KEY`/`TOKEX_LLM_MODEL`), loaded from a gitignored `.env`
-via a tiny built-in loader. Missing config = fail fast in `main.rs`. The call is best-effort: a
-network/parse failure prints `(llm skipped: …)` and never changes the exit code. Without `--llm`,
-no key is read and no request is made.
+Config lives in the user's OS config dir (`config.rs`: `dirs::config_dir()/tokex/config.toml`), set
+post-install via `tokex setup` (interactive `inquire` prompts) — **not** a project `.env`.
+`config::load()` reads the file then applies `TOKEX_LLM_*` env overrides. Two modes drive execution
+(`main.rs` → `orchestrate::Options`):
+- **compression**: `off` (raw `rtk run -c`, no filter) · `heuristic` (filtered subcommand, default) ·
+  `llm` (filtered + the AI insight).
+- **rtk_verbosity**: `normal` · `ultra-compact` (appends `--ultra-compact` to the rtk args).
+
+`tokex run --llm` (or JSON `"llm": true`) forces the insight on regardless of mode. LLM compression
+(`llm.rs`) POSTs the captured output to an OpenAI-compatible endpoint and emits one extra
+`{"type":"insight", ...}` event. Missing key when LLM is requested = fail fast (`run tokex setup`).
+The call is best-effort: a network/parse failure prints `(llm skipped: …)` and never changes the
+exit code.
 
 ## Out of scope for v1 (deferred, do not add speculatively)
 

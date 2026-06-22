@@ -44,6 +44,14 @@ fn rtk_path() -> std::path::PathBuf {
     std::path::PathBuf::from("rtk")
 }
 
+/// Execution options derived from config modes.
+pub struct Options {
+    /// compression=off: bypass rtk filtering (raw `rtk run -c`).
+    pub raw: bool,
+    /// rtk_verbosity=ultra-compact: pass `--ultra-compact` to rtk.
+    pub ultra_compact: bool,
+}
+
 /// Run the intent through RTK. Writes normalized NDJSON events to `machine` (stdout) and a
 /// human summary to `human` (stderr). Returns the process exit code.
 pub fn run(
@@ -51,9 +59,17 @@ pub fn run(
     machine: &mut impl Write,
     human: &mut impl Write,
     llm: Option<&LlmConfig>,
+    opts: &Options,
 ) -> Result<i32, String> {
     intent.validate()?;
-    let args = intent.to_rtk_args();
+    let mut args = if opts.raw {
+        vec!["run".to_string(), "-c".to_string(), intent.command.trim().to_string()]
+    } else {
+        intent.to_rtk_args()
+    };
+    if opts.ultra_compact {
+        args.push("--ultra-compact".to_string());
+    }
 
     // PROCESS_START on the human channel only; machine channel is pure line/result events.
     writeln!(human, "› rtk {}", args.join(" ")).ok();
