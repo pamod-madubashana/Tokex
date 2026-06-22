@@ -50,32 +50,30 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 ## Installation
 
-**Get rtk without building it** — Tokex can download the matching rtk release itself:
+Tokex downloads its `rtk` backend **automatically** on first run — there's nothing else to install.
 
-```bash
-tokex install-rtk
+**With your agent** — paste this to Claude Code / Cursor / Codex:
+
+```text
+Install Tokex: download the latest release for my OS/arch from
+https://github.com/pamod-madubashana/Tokex/releases/latest, extract the `tokex` binary, put it on
+my PATH, and confirm with `tokex --version`. It fetches its rtk backend automatically on first run.
 ```
 
-This fetches the `rtk` release **this build was tested against** (a pinned version, not `latest`,
-so a breaking rtk release can't surprise you) for your OS/arch and installs it into Tokex's data
-dir, which Tokex checks automatically. So you can ship just `tokex` and let it pull its backend.
+**Manual** — download the archive for your platform from
+[Releases](https://github.com/pamod-madubashana/Tokex/releases/latest), extract `tokex`, put it on
+your `PATH`, and run `tokex --version`. (`tokex install-rtk` pre-fetches rtk for offline/CI use.)
 
-**Build from source instead:** a Rust toolchain. [rtk](https://github.com/rtk-ai/rtk) and
-[graphify](https://github.com/safishamsi/graphify) are vendored as git submodules under `vendor/`,
-so clone recursively:
+**Build from source** — needs a Rust toolchain. `rtk` and `graphify` are pinned git submodules, so
+clone recursively:
 
 ```bash
-git clone --recursive <repo>
-# or, in an existing clone:
-git submodule update --init --recursive
-
-cargo build --release
-# binary at target/release/tokex
+git clone --recursive https://github.com/pamod-madubashana/Tokex
+cd Tokex
+cargo build --release          # builds tokex + rtk into target/release/
 ```
 
-> Note: vendoring puts the sources in-tree, but the build doesn't compile/bundle them yet — Tokex
-> currently still spawns `rtk` from your `PATH`. Building a single self-contained binary from
-> `vendor/rtk` is a follow-up (see Roadmap).
+(Already cloned flat? `git submodule update --init --recursive`.)
 
 ## Usage
 
