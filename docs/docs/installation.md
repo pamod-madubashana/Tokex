@@ -5,46 +5,42 @@ title: Installation
 
 # Installation
 
-## Let Tokex fetch rtk
+Two ways to install Tokex — let your agent do it, or install manually. Either way, Tokex
+**downloads its `rtk` backend automatically** on first run, so there's nothing else to set up.
 
-Tokex needs the `rtk` binary. The easiest way is to let Tokex download the matching release itself:
+## Option A — Install with your agent
 
-```bash
-tokex install-rtk
+Paste this one-line prompt to your coding agent (Claude Code, Cursor, Codex, …):
+
+```text
+Install Tokex on my machine: download the latest release for my OS/arch from
+https://github.com/pamod-madubashana/Tokex/releases/latest, extract the `tokex` binary, put it on
+my PATH, and confirm with `tokex --version`. It fetches its rtk backend automatically on first run.
 ```
 
-This grabs the `rtk` release **this build was tested against** (a pinned version, not `latest`) for
-your OS/arch and installs it into Tokex's data dir (`%APPDATA%\tokex` / `~/.local/share/tokex`),
-which Tokex checks automatically. Ship just `tokex` and let it pull its backend.
+The agent figures out your platform, downloads the right archive, and puts `tokex` on your PATH.
 
-Tokex resolves `rtk` in this order: next to its own binary → the data dir (downloaded) → `PATH`.
+## Option B — Manual
 
-## Prebuilt binaries
+1. Download the archive for your platform from the
+   [**Releases**](https://github.com/pamod-madubashana/Tokex/releases/latest) page (see
+   [Downloads](downloads) for the file names).
+2. Extract it. You get `tokex` (`tokex.exe` on Windows).
+3. Put it on your `PATH` — copy it into a directory that's already on `PATH`, or add its folder.
+4. Confirm:
 
-Grab the archive for your platform from [Downloads](downloads). Each archive contains **both**
-`tokex` and `rtk` — keep them in the same directory (Tokex looks for `rtk` next to its own binary).
+   ```bash
+   tokex --version
+   ```
 
-## Build from source
-
-Requires a Rust toolchain. RTK and graphify are vendored as git submodules under `vendor/`, so
-clone recursively:
-
-```bash
-git clone --recursive https://github.com/pamod-madubashana/Tokex
-# or, in an existing clone:
-git submodule update --init --recursive
-
-cargo build --release
-```
-
-`cargo build` builds both `tokex` and the vendored `rtk` into `target/release/` (the first release
-build is slow — rtk compiles a full tree including bundled SQLite).
-
-Put `target/release` on your `PATH`, or copy `tokex` + `rtk` together to a directory that is.
+That's it. The first time you run a command, Tokex fetches the matching `rtk` release into its data
+dir automatically. (The release archive also bundles `rtk`, so if you keep them together no download
+is needed.)
 
 :::note
-Tokex spawns `rtk`. It prefers an `rtk` binary sitting next to its own executable and falls back to
-`rtk` on your `PATH`. If you move `tokex`, move `rtk` with it.
+Tokex resolves `rtk` in order: next to its own binary → its data dir → your `PATH` → otherwise it
+downloads the pinned release. Run `tokex install-rtk` to pre-fetch it (handy for offline or CI).
 :::
 
-Next: [Setup](setup).
+Next: [Setup](setup) to add your LLM provider and pick modes. Building from source instead? See
+[Development](development).

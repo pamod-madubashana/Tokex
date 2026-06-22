@@ -5,11 +5,32 @@ title: Development
 
 # Development
 
+## Get the source
+
+`rtk` and `graphify` are pinned git submodules under `vendor/`, so clone **recursively**:
+
 ```bash
-cargo build                       # build tokex + vendored rtk (keep it warning-clean)
+git clone --recursive https://github.com/pamod-madubashana/Tokex
+cd Tokex
+
+# already cloned without --recursive? pull the submodules in:
+git submodule update --init --recursive
+```
+
+You need a [Rust toolchain](https://rustup.rs) (and a C compiler — the vendored rtk builds bundled
+SQLite).
+
+## Build & test
+
+```bash
+cargo build                       # builds tokex + vendored rtk into target/ (first run is slow)
 cargo test                        # run the self-checks
 cargo test native_command_maps    # run a single test by name
+cargo run -- run "git status"     # try the CLI
 ```
+
+`cargo build` produces `tokex` and `rtk` side by side in `target/<profile>/`, so the dev binary
+finds rtk with no extra step.
 
 ## Contributing workflow
 

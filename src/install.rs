@@ -27,6 +27,37 @@ pub fn rtk_install_path() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join("tokex").join(rtk_bin_name()))
 }
 
+/// Is `rtk` resolvable on PATH? (Checks for the binary file; doesn't spawn it.)
+fn on_path() -> bool {
+    let name = rtk_bin_name();
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
+        .unwrap_or(false)
+}
+
+/// Resolve rtk, downloading it automatically if it isn't already present. Order:
+/// next to our own binary → tokex data dir → PATH → download the pinned release.
+pub fn ensure_rtk() -> Result<PathBuf, String> {
+    let name = rtk_bin_name();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(c) = exe.parent().map(|d| d.join(name)) {
+            if c.is_file() {
+                return Ok(c);
+            }
+        }
+    }
+    if let Some(c) = rtk_install_path() {
+        if c.is_file() {
+            return Ok(c);
+        }
+    }
+    if on_path() {
+        return Ok(PathBuf::from("rtk"));
+    }
+    eprintln!("rtk not found — installing it automatically …");
+    install()
+}
+
 /// RTK release asset for an OS/arch pair (matches rtk-ai/rtk's release naming).
 fn asset_for(os: &str, arch: &str) -> Option<&'static str> {
     match (os, arch) {
