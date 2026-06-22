@@ -18,7 +18,7 @@ module.exports = {
       '@docusaurus/preset-classic',
       {
         docs: {
-          routeBasePath: '/',
+          routeBasePath: '/docs',
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/pamod-madubashana/Tokex/edit/main/docs/',
         },
@@ -57,16 +57,16 @@ module.exports = {
         {
           title: 'Docs',
           items: [
-            { label: 'Introduction', to: '/' },
-            { label: 'Installation', to: '/installation' },
-            { label: 'Setup', to: '/setup' },
-            { label: 'MCP', to: '/mcp' },
+            { label: 'Introduction', to: '/docs' },
+            { label: 'Installation', to: '/docs/installation' },
+            { label: 'Setup', to: '/docs/setup' },
+            { label: 'MCP', to: '/docs/mcp' },
           ],
         },
         {
           title: 'More',
           items: [
-            { label: 'Downloads', to: '/downloads' },
+            { label: 'Downloads', to: '/docs/downloads' },
             { label: 'GitHub', href: 'https://github.com/pamod-madubashana/Tokex' },
           ],
         },
