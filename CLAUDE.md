@@ -88,11 +88,18 @@ exit code.
 
 tokex keeps a graphify code map fresh so agents only **read** it (`graphify-out/GRAPH_REPORT.md`,
 `graphify-out/wiki/`) and never spend a turn updating it. graphify is a Python tool
-(`pip install graphifyy`, invoked as `python -m graphify update .`, AST-only — no token cost).
+(`pip install graphifyy`, invoked as `python -m graphify ...`, AST-only — no token cost).
+
 After a **code-changing** `tokex run` (read-only commands like `git status` skip — see
-`touches_code`), tokex fires a background `graphify update .`; it auto-installs graphifyy once
-(cached via a `.graphify-ok` marker in the data dir). All best-effort — never blocks or fails a run.
-`tokex graph` forces a blocking refresh. Gated by `graph_auto` in config (`tokex setup`).
+`touches_code`), `auto_update`:
+- if set up → fires a background `graphify update .`;
+- if not → runs the one-time bootstrap **detached** (re-spawns `tokex graph`) so it never blocks the
+  command.
+
+The one-time bootstrap (`ensure`, cached via a `.graphify-ok` marker in the data dir):
+`pip install graphifyy` if needed → **`graphify install`** (registers the skill with the agent, e.g.
+`~/.claude/skills/graphify/` + a CLAUDE.md entry) → build the map. All best-effort — never blocks or
+fails a tokex run. `tokex graph` forces a blocking refresh. Gated by `graph_auto` (`tokex setup`).
 
 ## Out of scope (deferred, do not add speculatively)
 

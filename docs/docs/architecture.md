@@ -45,8 +45,9 @@ Set via [`tokex setup`](setup), applied per run:
 tokex keeps a [graphify](https://github.com/safishamsi/graphify) code map fresh so agents only
 **read** it (`graphify-out/`) instead of spending turns updating it. After a code-changing
 `tokex run`, tokex fires a background `graphify update .` (Python, AST-only — no token cost);
-read-only commands skip it. graphifyy is auto-installed once. `tokex graph` forces a refresh; toggle
-with `graph_auto` in [Setup](setup).
+read-only commands skip it. The one-time setup runs detached so it never blocks a command: it
+auto-installs graphifyy and registers the graphify skill with your agent (`graphify install`), then
+builds the map. `tokex graph` forces a refresh; toggle with `graph_auto` in [Setup](setup).
 
 ## Vendored dependencies
 
