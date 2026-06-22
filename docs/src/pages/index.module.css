@@ -82,9 +82,10 @@
 
 .features {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* 2 columns -> 4 cards form a balanced 2x2; collapses to 1 column when narrow. */
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1.25rem;
-  max-width: 1000px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 1rem 1rem 4.5rem;
 }
