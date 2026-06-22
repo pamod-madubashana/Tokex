@@ -30,24 +30,6 @@ enum Msg {
     Done,
 }
 
-/// Resolve the rtk binary, in order: next to our own exe (bundled/workspace build), then the
-/// downloaded copy in the data dir (`tokex install-rtk`), then `rtk` on PATH.
-fn rtk_path() -> std::path::PathBuf {
-    let name = crate::install::rtk_bin_name();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(cand) = exe.parent().map(|d| d.join(name)) {
-            if cand.is_file() {
-                return cand;
-            }
-        }
-    }
-    if let Some(cand) = crate::install::rtk_install_path() {
-        if cand.is_file() {
-            return cand;
-        }
-    }
-    std::path::PathBuf::from("rtk")
-}
 
 /// Execution options derived from config modes.
 pub struct Options {
@@ -79,12 +61,13 @@ pub fn run(
     // PROCESS_START on the human channel only; machine channel is pure line/result events.
     writeln!(human, "› rtk {}", args.join(" ")).ok();
 
-    let mut child = Command::new(rtk_path())
+    let rtk = crate::install::ensure_rtk()?;
+    let mut child = Command::new(&rtk)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("failed to spawn rtk (run `tokex install-rtk`, or put rtk on PATH): {e}"))?;
+        .map_err(|e| format!("failed to spawn rtk at {}: {e}", rtk.display()))?;
 
     let (tx, rx) = mpsc::channel();
     let reader = |ch: Channel, pipe: Option<Box<dyn std::io::Read + Send>>, tx: mpsc::Sender<Msg>| {
