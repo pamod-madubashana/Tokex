@@ -124,21 +124,24 @@ tokex plan-stack "build a music player app"
 Failing commands classify error lines (`severity: "error"`), set `status: "failed"`, and propagate
 the underlying exit code.
 
-## LLM API key
+## Setup (provider, API key, modes)
 
-The `--llm` flag reads config from the environment (or a local `.env`). Copy the template and fill
-in a key from any free OpenAI-compatible provider:
+Configure Tokex *after* install with one interactive command — no file editing:
 
 ```bash
-cp .env.example .env
-# edit .env:
-#   TOKEX_LLM_URL=https://api.groq.com/openai/v1/chat/completions
-#   TOKEX_LLM_KEY=gsk_...
-#   TOKEX_LLM_MODEL=llama-3.1-8b-instant
+tokex setup
 ```
 
-`.env` is gitignored — your key never lands in a commit. Free endpoints that work out of the box:
-Groq, OpenRouter (`:free` models), and NVIDIA NIM. See [.env.example](.env.example) for URLs.
+It prompts for:
+- **Provider** — Groq, OpenRouter, NVIDIA NIM (presets fill the URL + a default model), or Custom.
+- **API key** — masked input from any free OpenAI-compatible provider.
+- **Compression** — `heuristic` (rtk filter, default) · `llm` (rtk + AI insight) · `off` (raw).
+- **RTK output** — `normal` or `ultra-compact`.
+
+Settings are written to your OS config dir (`%APPDATA%\tokex\config.toml` on Windows,
+`~/.config/tokex/config.toml` on Linux) — never to the repo. `TOKEX_LLM_URL`/`_KEY`/`_MODEL` env
+vars override the file for CI/power use. `tokex run --llm …` forces the insight on for one run
+regardless of the configured mode.
 
 ## Development
 
