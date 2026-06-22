@@ -2,6 +2,7 @@
 //! A deterministic RTK orchestration layer: normalize agent intent, forward to RTK, normalize
 //! the stream. Tokex does not own execution; RTK does.
 
+mod config;
 mod intent;
 mod llm;
 mod normalize;
@@ -26,7 +27,7 @@ struct Cli {
 enum Cmd {
     /// Run a command through RTK and stream normalized events.
     Run {
-        /// Compress output into a compact LLM insight (needs TOKEX_LLM_URL/TOKEX_LLM_KEY).
+        /// Force the LLM insight on for this run (overrides the configured compression mode).
         #[arg(long)]
         llm: bool,
         /// The command line, e.g. "cargo test".
@@ -37,6 +38,8 @@ enum Cmd {
         /// Free-text task description.
         task: String,
     },
+    /// Interactive setup: choose provider, enter API key, pick modes.
+    Setup,
 }
 
 fn main() {
@@ -44,7 +47,7 @@ fn main() {
     let mut out = io::stdout();
     let mut err = io::stderr();
 
-    let intent = match cli.cmd {
+    let mut intent = match cli.cmd {
         Some(Cmd::Run { llm, command }) => {
             let mut i = Intent::from_command(command);
             i.llm = llm;
@@ -53,6 +56,13 @@ fn main() {
         Some(Cmd::PlanStack { task }) => {
             let p = plan::plan(&task);
             println!("{}", serde_json::to_string_pretty(&p).unwrap());
+            return;
+        }
+        Some(Cmd::Setup) => {
+            if let Err(e) = config::run_setup() {
+                eprintln!("tokex: setup failed: {e}");
+                exit(1);
+            }
             return;
         }
         // No subcommand: read an intent as JSON from stdin (pipe mode).
@@ -76,12 +86,21 @@ fn main() {
         }
     };
 
-    // Load LLM config only when requested; fail fast on missing setup rather than after running.
+    // Apply configured modes. `--llm` and a JSON `"llm": true` both force the insight on; otherwise
+    // the configured compression mode decides.
+    let cfg = config::load();
+    intent.llm = intent.llm || cfg.compression == "llm";
+    let opts = orchestrate::Options {
+        raw: cfg.compression == "off",
+        ultra_compact: cfg.rtk_verbosity == "ultra-compact",
+    };
+
+    // Load LLM config only when needed; fail fast on missing setup rather than after running.
     let llm_cfg = if intent.llm {
-        match llm::LlmConfig::from_env() {
+        match llm::LlmConfig::from_config(&cfg) {
             Some(c) => Some(c),
             None => {
-                eprintln!("tokex: --llm requires TOKEX_LLM_URL and TOKEX_LLM_KEY (set them or add a .env; see README)");
+                eprintln!("tokex: LLM compression needs an API key — run `tokex setup`");
                 exit(2);
             }
         }
@@ -89,7 +108,7 @@ fn main() {
         None
     };
 
-    match orchestrate::run(&intent, &mut out, &mut err, llm_cfg.as_ref()) {
+    match orchestrate::run(&intent, &mut out, &mut err, llm_cfg.as_ref(), &opts) {
         Ok(code) => exit(code),
         Err(e) => {
             eprintln!("tokex: {e}");
