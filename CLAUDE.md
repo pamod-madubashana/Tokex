@@ -118,9 +118,11 @@ blocking refresh. All best-effort — never blocks or fails a tokex run. Gated b
 ## Prompts & categories (`prompt.rs`)
 
 A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it:
-- **free text → a task** (`Prompt`): the model turns it into ONE shell command and tokex **runs it
-  through rtk**, returning the command's *output* — not the command. This is the headline path
-  (`tokex "list all rust projects"`).
+- **free text → a task** (`Prompt`): the model turns it into ONE shell command, tokex shows it and
+  **requires confirmation** (default No, both modes — a free model can emit a wrong/destructive
+  command), then **runs it through rtk** and returns the command's *output* — not the command. This
+  is the headline path (`tokex "list all rust projects"`). The command runs via `rtk run -c` (raw)
+  so pipes work. `-m` reads the yes from stdin; no input = abort.
 - `<known-category>: text` (`Category`) or a JSON object (`Json`) → a **structured answer** using
   that category's header (`plan-stack`, `theme`, …). These aren't runnable commands.
 - a lone token → a command.

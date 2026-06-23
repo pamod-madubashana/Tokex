@@ -56,8 +56,10 @@ the exit code. Requires a key from [Setup](setup).
 ## Prompts & categories
 
 A single quoted arg is a *prompt*, not a command. **Free text is a task: the model turns it into one
-shell command and tokex runs it, returning the output** — not the command. `category: text` (or a
-JSON object of several) instead returns a structured answer. Requires a key from [Setup](setup).
+shell command, tokex shows it, asks you to confirm, then runs it and returns the output** — not the
+command. `category: text` (or a JSON object of several) instead returns a structured answer. Requires
+a key from [Setup](setup). The confirmation is default-No and applies in both modes (a free model can
+emit a wrong/destructive command); `-m` reads the yes from stdin, and no input aborts.
 
 ```bash
 tokex "list all rust projects in the current dir"     # task → command, run, output

@@ -121,24 +121,26 @@ The agent can read just that insight instead of the full log. Needs an API key (
 `--llm`, no key is read and no request is made.
 
 **Prompts (a single quoted arg).** Several unquoted args are a command (`tokex git status`); a
-single quoted string is a prompt. **Free text is a task: the model turns it into one shell command
-and Tokex runs it, returning the output** (not the command). `category: text` (or a JSON object of
-several) instead returns a structured answer.
+single quoted string is a prompt. **Free text is a task: the model turns it into one shell command,
+Tokex shows it, asks you to confirm, then runs it and returns the output** (not the command).
+`category: text` (or a JSON object of several) instead returns a structured answer.
 
 ```bash
-tokex "list all rust projects in the current dir"       # task → model writes a command, Tokex runs it
+tokex "list all rust projects in the current dir"       # task → model writes a command, you confirm, Tokex runs it
 tokex "plan-stack: build a music player app"            # category → structured answer
 tokex '{"plan-stack":"music player","theme":"glassy"}'  # several categories at once
 ```
 
 Two modes. `tokex "…"` is for **you**: a spinner while waiting, then the model's thinking streamed
 live to stderr. `tokex -m "…"` is for **another agent**: no spinner, no thinking — just the output
-on stdout.
+on stdout. Both confirm before running (a free model can emit a wrong or destructive command);
+`-m` reads the yes from stdin (`printf 'y\n' | tokex -m "…"`), and no input safely aborts.
 
 ```text
 $ tokex "list all rust projects in the current dir"
-⠹ thinking...                       # spinner, then streamed reasoning (stderr)
+| thinking...                       # spinner, then streamed reasoning (stderr)
 $ find . -name Cargo.toml | sed 's|/Cargo.toml||' | sort
+Run this command? [y/N] y
 .                                   # the command's output (stdout)
 ```
 ```json

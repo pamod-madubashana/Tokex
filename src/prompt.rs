@@ -51,9 +51,11 @@ const DEFAULT_HEADER: &str = "You are a concise senior software engineer. Answer
 question briefly and practically. No preamble, no markdown headings.";
 
 // Free-text tasks: turn the request into ONE shell command that tokex then runs.
-const TASK_SYSTEM: &str = "Convert the user's request into ONE shell command that accomplishes it. \
-Output ONLY the command on a single line — no explanation, no markdown, no code fences. Prefer \
-portable POSIX tools.";
+const TASK_SYSTEM: &str = "Convert the user's request into ONE shell command that accomplishes it in \
+the CURRENT working directory. Stay within the current directory tree unless the request explicitly \
+names another path — never scan the whole filesystem or the drive root. Prefer portable POSIX tools \
+and read-only commands for queries. Output ONLY the command on a single line — no explanation, no \
+markdown, no code fences.";
 
 /// The header (system prompt) bound to a category, if it is known.
 pub fn header(category: &str) -> Option<&'static str> {
@@ -116,23 +118,45 @@ pub fn parse_json(s: &str) -> Result<Vec<(String, String)>, String> {
 /// is the command's output: live on stdout for User mode, captured-and-printed for Model mode.
 pub fn run_task(cfg: &LlmConfig, task: &str, mode: Mode, opts: &Options) -> Result<i32, String> {
     let cmd = gen_command(cfg, task, mode)?;
+    // A free model can emit a wrong or destructive command (it once tried to scan all of C:\).
+    // Always show it and require an explicit yes before running — in both modes. No TTY / no `y`
+    // on stdin = abort, never run.
+    if !confirm(&cmd) {
+        let _ = writeln!(std::io::stderr(), "aborted (not confirmed).");
+        return Ok(130); // 128 + SIGINT, the "cancelled by user" convention
+    }
     let intent = Intent::from_command(&cmd);
     // Generated commands are arbitrary shell (pipes, redirects), so run via `rtk run -c` (raw),
     // not the per-tool native filter which would split `find … | wc -l` and break the pipe.
-    // No LLM insight on the run itself — the agent asked for output, not analysis.
+    // No LLM insight on the run itself — the caller asked for output, not analysis.
     let exec = Options { raw: true, footer: false, llm_on_failure: false, ..*opts };
     match mode {
+        // Output only either way; User additionally sees rtk's human summary on stderr.
         Mode::User => {
-            let mut err = std::io::stderr();
-            let _ = writeln!(err, "$ {cmd}");
-            orchestrate::run(&intent, &mut std::io::stdout(), &mut err, None, &exec)
+            orchestrate::run(&intent, &mut std::io::stdout(), &mut std::io::stderr(), None, &exec)
         }
         Mode::Model => {
-            // Output only: discard the human channel, footer already suppressed.
-            let mut out = std::io::stdout();
-            orchestrate::run(&intent, &mut out, &mut std::io::sink(), None, &exec)
+            orchestrate::run(&intent, &mut std::io::stdout(), &mut std::io::sink(), None, &exec)
         }
     }
+}
+
+/// Show the generated command and require an explicit yes from stdin before running it. Default No:
+/// an empty line, EOF (no TTY / no input piped), or read error all decline.
+fn confirm(cmd: &str) -> bool {
+    let mut err = std::io::stderr();
+    let _ = writeln!(err, "$ {cmd}");
+    let _ = write!(err, "Run this command? [y/N] ");
+    let _ = err.flush();
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).unwrap_or(0) == 0 {
+        return false; // EOF / no input
+    }
+    is_yes(&line)
+}
+
+fn is_yes(s: &str) -> bool {
+    matches!(s.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 fn gen_command(cfg: &LlmConfig, task: &str, mode: Mode) -> Result<String, String> {
@@ -326,6 +350,16 @@ mod tests {
         assert_eq!(wrapped, vec![("plan-stack".to_string(), "media player".to_string())]);
         assert!(parse_json("[]").is_err());
         assert!(parse_json("{}").is_err());
+    }
+
+    #[test]
+    fn is_yes_only_accepts_affirmative() {
+        assert!(is_yes("y"));
+        assert!(is_yes(" Yes \n"));
+        assert!(!is_yes(""));
+        assert!(!is_yes("n"));
+        assert!(!is_yes("no"));
+        assert!(!is_yes("sure"));
     }
 
     #[test]
