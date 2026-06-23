@@ -55,11 +55,11 @@ question briefly and practically. No preamble, no markdown headings.";
 const DECISION_SYSTEM: &str = "You fulfill a developer's request from their CURRENT working \
 directory. Decide how to respond:\n\
 - If running ONE shell command produces the real result (list/count/search files, git, build, \
-inspect, file ops), reply with EXACTLY {\"run\":\"<command>\"} — ONE simple, correct command, stay \
-within the current directory tree, never scan the whole filesystem or drive root, prefer POSIX \
-tools. Keep it minimal; avoid fragile `-exec`/subshell chains.\n\
-- Otherwise reply with EXACTLY {\"answer\":\"<concise answer>\"}.\n\
-Output ONLY the JSON object — no markdown, no extra text.";
+inspect, file ops), reply with EXACTLY {\"run\":\"<command>\"} — ONE simple, correct command; stay \
+within the current directory tree; never scan the whole filesystem or drive root; keep it minimal.\n\
+- Otherwise reply with EXACTLY {\"answer\":\"<text>\"}. In the answer, wrap any file tree, table, or \
+aligned/multi-line layout in a fenced ``` code block so it renders correctly in a terminal.\n\
+Output ONLY the JSON object — no extra text outside it.";
 
 
 /// The header (system prompt) bound to a category, if it is known.
