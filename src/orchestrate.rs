@@ -41,6 +41,9 @@ pub struct Options {
     /// `git status` already returns compact rtk output — sending it to the model would burn tokens
     /// (and block on the network) for an insight that just says "no issues".
     pub llm_on_failure: bool,
+    /// Emit the `{"type":"result", …}` footer on the machine channel. Off for model-mode prompts
+    /// where the caller wants the command's output and nothing else.
+    pub footer: bool,
 }
 
 /// Run the intent through RTK. Writes normalized NDJSON events to `machine` (stdout) and a
@@ -119,8 +122,10 @@ pub fn run(
 
     let code = child.wait().map_err(|e| format!("wait failed: {e}"))?.code().unwrap_or(-1);
     let status = if code == 0 { "ok" } else { "failed" };
-    let result = Result_ { kind: "result", status, code };
-    writeln!(machine, "{}", serde_json::to_string(&result).unwrap()).ok();
+    if opts.footer {
+        let result = Result_ { kind: "result", status, code };
+        writeln!(machine, "{}", serde_json::to_string(&result).unwrap()).ok();
+    }
     writeln!(human, "‹ {status} (exit {code}, {errors} error line(s))").ok();
 
     // Optional LLM compression: best-effort. A failed call never fails the exec.

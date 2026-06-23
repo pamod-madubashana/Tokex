@@ -155,6 +155,7 @@ fn tool_run(params: &Value, cfg: &Config) -> Value {
         raw: cfg.compression == "off",
         ultra_compact: cfg.rtk_verbosity == "ultra-compact",
         llm_on_failure: cfg.compression == "llm",
+        footer: true,
     };
     // Best-effort LLM: if requested but unconfigured, just run without the insight.
     let llm_cfg = if intent.llm || opts.llm_on_failure { LlmConfig::from_config(cfg) } else { None };

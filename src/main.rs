@@ -63,17 +63,29 @@ enum Cmd {
 const SUBCOMMANDS: &[&str] = &["run", "script", "setup", "mcp", "install-rtk", "graph", "help"];
 
 fn main() {
-    // Two bare forms when the first arg isn't a subcommand/flag:
-    //   tokex git status         -> several args -> a command, run through rtk
-    //   tokex "plan-stack: foo"  -> one arg      -> a prompt (see prompt::classify)
-    // Quoting is the signal: a quoted string is one arg, so `tokex "git status"` is a prompt.
     let args: Vec<String> = std::env::args().collect();
+
+    // Model mode: `tokex -m "<prompt>"` — output only, no spinner/thinking (for agents).
+    if matches!(args.get(1).map(String::as_str), Some("-m") | Some("--model")) {
+        let prompt = args[2..].join(" ");
+        if prompt.trim().is_empty() {
+            eprintln!("tokex: -m needs a prompt, e.g. tokex -m \"list rust projects\"");
+            exit(2);
+        }
+        dispatch_one(&prompt, prompt::Mode::Model);
+        return;
+    }
+
+    // Two bare forms when the first arg isn't a subcommand/flag (User mode):
+    //   tokex git status                     -> several args -> a command, run through rtk
+    //   tokex "list all rust projects"       -> one arg      -> a prompt (see prompt::classify)
+    // Quoting is the signal: a quoted string is one arg, so `tokex "git status"` is a prompt.
     if args.get(1).is_some_and(|f| is_passthrough(f)) {
         let rest = &args[1..];
         if rest.len() >= 2 {
             run_intent(Intent::from_command(rest.join(" ")));
         } else {
-            dispatch_one(&rest[0]);
+            dispatch_one(&rest[0], prompt::Mode::User);
         }
         return;
     }
@@ -92,6 +104,7 @@ fn main() {
                 raw: cfg.compression == "off",
                 ultra_compact: cfg.rtk_verbosity == "ultra-compact",
                 llm_on_failure: false, // scripts are verified by their diff, not a model insight
+                footer: true,
             };
             let mut out = io::stdout();
             let mut err = io::stderr();
@@ -183,6 +196,7 @@ fn run_intent(intent: Intent) {
         raw: cfg.compression == "off",
         ultra_compact: cfg.rtk_verbosity == "ultra-compact",
         llm_on_failure: cfg.compression == "llm",
+        footer: true,
     };
 
     // Load LLM config when it could be used. Fail fast only when `--llm` explicitly demanded it.
@@ -219,34 +233,61 @@ fn is_passthrough(first: &str) -> bool {
     !first.starts_with('-') && !SUBCOMMANDS.contains(&first)
 }
 
-/// Handle a single bare argument: a JSON / `category: text` / free-text prompt, or a lone command.
-fn dispatch_one(arg: &str) {
+/// Handle a single bare argument: a free-text task (model writes a command, tokex runs it), a
+/// `category: text` / JSON structured prompt, or a lone command.
+fn dispatch_one(arg: &str, mode: prompt::Mode) {
     match prompt::classify(arg) {
         prompt::Dispatch::Command(cmd) => run_intent(Intent::from_command(cmd)),
+        prompt::Dispatch::Prompt(task) => run_task(&task, mode),
         prompt::Dispatch::Json(s) => match prompt::parse_json(&s) {
-            Ok(pairs) => run_prompt(pairs),
+            Ok(pairs) => run_prompt(pairs, mode),
             Err(e) => {
                 eprintln!("tokex: {e}");
                 exit(2);
             }
         },
-        prompt::Dispatch::Category(cat, text) => run_prompt(vec![(cat, text)]),
-        prompt::Dispatch::Prompt(text) => run_prompt(vec![(String::new(), text)]),
+        prompt::Dispatch::Category(cat, text) => run_prompt(vec![(cat, text)], mode),
     }
 }
 
-/// Run category prompts through the LLM and print the combined JSON answer to stdout (thinking
-/// streams to stderr inside `prompt::run`).
-fn run_prompt(pairs: Vec<(String, String)>) -> ! {
-    let cfg = config::load();
-    let llm_cfg = match llm::LlmConfig::from_config(&cfg) {
+fn load_llm_or_exit(cfg: &config::Config) -> llm::LlmConfig {
+    match llm::LlmConfig::from_config(cfg) {
         Some(c) => c,
         None => {
             eprintln!("tokex: prompts need an API key — run `tokex setup`");
             exit(2);
         }
-    };
-    match prompt::run(&pairs, &llm_cfg) {
+    }
+}
+
+fn exec_opts(cfg: &config::Config) -> orchestrate::Options {
+    orchestrate::Options {
+        raw: cfg.compression == "off",
+        ultra_compact: cfg.rtk_verbosity == "ultra-compact",
+        llm_on_failure: false,
+        footer: true,
+    }
+}
+
+/// Free-text task: the model produces a command and tokex runs it, returning the command's output.
+fn run_task(task: &str, mode: prompt::Mode) -> ! {
+    let cfg = config::load();
+    let llm_cfg = load_llm_or_exit(&cfg);
+    match prompt::run_task(&llm_cfg, task, mode, &exec_opts(&cfg)) {
+        Ok(code) => exit(code),
+        Err(e) => {
+            eprintln!("tokex: {e}");
+            exit(1);
+        }
+    }
+}
+
+/// Structured category prompts: print the combined JSON answer to stdout (thinking streams to
+/// stderr in User mode inside `prompt::run`).
+fn run_prompt(pairs: Vec<(String, String)>, mode: prompt::Mode) -> ! {
+    let cfg = config::load();
+    let llm_cfg = load_llm_or_exit(&cfg);
+    match prompt::run(&pairs, &llm_cfg, mode) {
         Ok(v) => {
             println!("{}", serde_json::to_string_pretty(&v).unwrap());
             exit(0);

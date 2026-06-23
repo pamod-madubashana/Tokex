@@ -66,7 +66,8 @@ pub fn run(
     // ponytail: a plain `git diff` includes any pre-existing uncommitted changes too; commit or
     // stash first if you need the script's changes in isolation.
     writeln!(err, "— verify (git diff) —").ok();
-    let verify_opts = Options { raw: false, ultra_compact: false, llm_on_failure: false };
+    let verify_opts =
+        Options { raw: false, ultra_compact: false, llm_on_failure: false, footer: true };
     orchestrate::run(&Intent::from_command("git diff --stat"), out, err, None, &verify_opts)?;
 
     Ok(code)
