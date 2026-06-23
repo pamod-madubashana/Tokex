@@ -39,9 +39,10 @@ This keeps the model's input structured and small while a human still gets a gla
 One pipeline, shared by every front-end:
 
 ```
-agent intent  ──▶  parse  ──▶  map to rtk  ──▶  spawn rtk  ──▶  normalize lines  ──▶  dual output
- (CLI | JSON)      Intent     first token →     2 threads        {type,line,         stdout: NDJSON
-                              rtk subcommand     + mpsc            severity}          stderr: summary
+agent intent  ──▶  parse  ──▶  map to rtk  ──▶  spawn rtk  ──▶  classify lines  ──▶  dual output
+ (CLI | JSON)      Intent     first token →     2 threads        severity for       stdout: raw lines
+                              rtk subcommand     + mpsc           error count        + result footer
+                                                                                     stderr: summary
 ```
 
 The command's first token picks the RTK invocation: a known tool (`git`, `cargo`, `npm`, …) routes
@@ -85,8 +86,8 @@ tokex git status        # same thing — the run subcommand is optional
 ```
 
 ```jsonc
-// stdout (machine)
-{"type":"stdout","line":" M src/orchestrate.rs","severity":"info"}
+// stdout (machine): rtk output verbatim, then one result footer
+ M src/orchestrate.rs
 {"type":"result","status":"ok","code":0}
 ```
 ```text
@@ -94,6 +95,9 @@ tokex git status        # same thing — the run subcommand is optional
 › rtk git status
 ‹ ok (exit 0, 0 error line(s))
 ```
+
+Output lines pass through verbatim — Tokex never pays a per-line JSON tax for what's meant to
+*compress* command output. Status rides on the single footer (and, on failure, an `insight` line).
 
 **Pipe an intent as JSON** (no subcommand):
 
@@ -116,21 +120,22 @@ tokex run --llm "cargo test"
 The agent can read just that insight instead of the full log. Needs an API key (below); without
 `--llm`, no key is read and no request is made.
 
-**Get a tech-stack recommendation:**
+**Prompts (a single quoted arg).** Several unquoted args are a command (`tokex git status`); a
+single quoted string is a prompt sent to the model. `category: text` uses that category's header;
+free text uses a default header; a JSON object runs several categories at once. The model streams
+its thinking to stderr while you wait; the answer is JSON on stdout.
 
 ```bash
-tokex plan-stack "build a music player app"
+tokex "plan-stack: build a music player app"          # one category
+tokex '{"plan-stack":"music player","theme":"glassy"}'  # several at once
+tokex "find a python lib for web scraping"            # no category
 ```
 ```json
-{
-  "task": "build a music player app",
-  "stack": "tauri",
-  "reason": "cross-platform desktop with Rust core + web UI; small binaries"
-}
+{ "plan-stack": { "stack": "tauri", "reason": "cross-platform desktop; small binaries" } }
 ```
 
-Failing commands classify error lines (`severity: "error"`), set `status: "failed"`, and propagate
-the underlying exit code.
+Failing commands set `status: "failed"` in the footer and propagate the underlying exit code; in
+`llm` mode a failure also gets an `insight` line (a successful command stays token-free).
 
 ## Setup (provider, API key, modes)
 
@@ -184,7 +189,6 @@ See [CLAUDE.md](CLAUDE.md) for architecture and contributor rules.
 
 Deliberately out of scope for v1 — added when there's a consumer that needs them:
 
-- **LLM-backed `plan-stack`** — reuse the `--llm` path for stack recommendations.
 - **Persisted execution graph** — command/dependency/failure trace of tokex runs themselves.
 - **Single self-contained binary** — build `vendor/rtk` in a cargo workspace and have Tokex use the
   vendored binary instead of requiring `rtk` on `PATH`, so there's nothing to install separately.

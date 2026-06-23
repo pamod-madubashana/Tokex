@@ -28,8 +28,9 @@ cargo build                       # build (must be warning-clean before committi
 cargo test                        # all self-checks
 cargo test native_command_maps    # single test by name (substring match)
 cargo run -- run "git status"     # CLI front-end: forward a command through rtk
+cargo run -- git status           # same thing — run subcommand optional (several args = command)
 echo '{"tool":"rtk","cmd":"cargo --version"}' | cargo run --   # stdin-JSON front-end
-cargo run -- plan-stack "build a music player app"             # stack planner
+cargo run -- "plan-stack: music player app"                    # category prompt (single quoted arg)
 ```
 
 ## Architecture
@@ -44,19 +45,23 @@ One pipeline, four stages, shared by every front-end:
 3. **Orchestrate** (`orchestrate.rs`) — validate, spawn the `rtk` child, read its stdout+stderr on
    **two threads feeding one mpsc channel** so the streams interleave live. No async runtime —
    stdlib `process` + `thread` + `mpsc` only.
-4. **Normalize** (`normalize.rs`) — each rtk text line becomes `{type, line, severity}`; severity is
-   a blunt keyword classifier (`error|failed|panic|fatal` → error, `warn` → warning, else info).
+4. **Normalize** (`normalize.rs`) — classify each rtk line by severity (`error|failed|panic|fatal`
+   → error, `warn` → warning, else info). The line text passes through **verbatim**; severity is
+   internal (error count + insight gating), not serialized per line.
 
-**Dual channel (the core contract):** machine output is **NDJSON on stdout** (one `LineEvent` per
-line, terminated by a single `{"type":"result", ...}` line); the human-readable summary goes to
-**stderr**. Keep these separated by file descriptor — never mix human text into stdout.
+**Dual channel (the core contract):** machine output on **stdout** is the rtk output lines
+**verbatim**, terminated by a single `{"type":"result", ...}` footer (plus a `{"type":"insight"…}`
+line when a failure was analyzed). Wrapping every line in JSON would cost the agent more tokens than
+the raw command it's meant to compress, so don't. The human-readable summary goes to **stderr**.
+Keep these separated by file descriptor — never mix human text into stdout.
 
-`main.rs` is dispatch only: a subcommand (`run`/`plan-stack`/`setup`/`mcp`) or, with no subcommand
-and piped stdin, a JSON intent.
+`main.rs` is dispatch only. With a first arg that isn't a subcommand: several args = a command
+(`tokex git status`), a single (quoted) arg = a prompt (`tokex "plan-stack: …"`, see `prompt.rs`).
+Otherwise a subcommand (`run`/`setup`/`mcp`/…) or, with no subcommand and piped stdin, a JSON intent.
 
 **Front-ends share the core.** CLI, stdin-JSON, and the MCP server (`mcp.rs`, `tokex mcp`) all funnel
 into the same `orchestrate::run`. MCP is a hand-rolled JSON-RPC 2.0 stdio server (sync, no tokio)
-exposing `run` (captures the machine channel, returns events) and `set_agent` (the model identifies
+exposing `run` (captures the machine channel, returns it verbatim) and `set_agent` (the model identifies
 its platform when there's no TTY — persists `config.agent` and installs the graphify skill in the
 background). **stdout is the JSON-RPC channel in MCP mode** — the core and the `set_agent` bootstrap
 write to buffers / detached null stdio, never stdout, so nothing corrupts the protocol.
@@ -107,9 +112,17 @@ auto-detects Codex (`Codex`), else asks the user when interactive (or leaves gui
 `tokex setup` runs the whole bootstrap up front (the "start project" moment); `tokex graph` forces a
 blocking refresh. All best-effort — never blocks or fails a tokex run. Gated by `graph_auto`.
 
+## Prompts & categories (`prompt.rs`)
+
+A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it: JSON object →
+several `category: text` pairs; `<known-category>: text` → that category; other free text → a
+default-header prompt; a lone token → a command. Each **category** binds a name to a *header*
+(system prompt) in the `CATEGORIES` table — **add a category by adding a row**, nothing else.
+Prompts stream (thinking on stderr, answer JSON on stdout) and require an LLM key.
+
 ## Out of scope (deferred, do not add speculatively)
 
-LLM-backed `plan-stack`.
+(nothing currently deferred)
 
 ## Commit & attribution rules (must follow)
 

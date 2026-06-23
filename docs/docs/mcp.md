@@ -30,16 +30,12 @@ Input:
 - `command` (string, required) — the command line.
 - `llm` (boolean, optional) — compress output into an insight for this call.
 
-Result content is the normalized event list — the same machine channel as the CLI, delivered as a
-tool result:
+Result content is the machine channel verbatim — the same as the CLI: rtk output lines followed by a
+single result footer (and an `insight` line when a failure was analyzed):
 
-```json
-{
-  "events": [
-    { "type": "stdout", "line": "Compiling tokex v0.1.0", "severity": "info" },
-    { "type": "result", "status": "ok", "code": 0 }
-  ]
-}
+```text
+Compiling tokex v0.1.0
+{"type":"result","status":"ok","code":0}
 ```
 
 `isError` is set when the command exits non-zero.

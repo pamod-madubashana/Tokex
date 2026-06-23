@@ -26,9 +26,10 @@ trace. It's infrastructure, not an agent.
 ## How it works
 
 ```
-agent intent  ──▶  parse  ──▶  map to rtk  ──▶  spawn rtk  ──▶  normalize lines  ──▶  dual output
- (CLI | JSON       Intent     first token →     2 threads        {type,line,         stdout: NDJSON
-  | MCP)                      rtk subcommand     + mpsc            severity}          stderr: summary
+agent intent  ──▶  parse  ──▶  map to rtk  ──▶  spawn rtk  ──▶  classify lines  ──▶  dual output
+ (CLI | JSON       Intent     first token →     2 threads        severity for       stdout: raw lines
+  | MCP)                      rtk subcommand     + mpsc           error count        + result footer
+                                                                                     stderr: summary
 ```
 
 The command's first token picks the RTK invocation: a known tool (`git`, `cargo`, `npm`, …) routes

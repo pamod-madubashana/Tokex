@@ -7,13 +7,16 @@ title: Usage
 
 ## Run a command
 
+Several args are a command (the `run` subcommand is optional); rtk output passes through verbatim:
+
 ```bash
 tokex run "git status"
+tokex git status          # same thing
 ```
 
 ```json
-// stdout (machine) — newline-delimited JSON
-{"type":"stdout","line":" M src/orchestrate.rs","severity":"info"}
+// stdout (machine) — rtk output verbatim, then one result footer
+ M src/orchestrate.rs
 {"type":"result","status":"ok","code":0}
 ```
 
@@ -23,8 +26,8 @@ tokex run "git status"
 ‹ ok (exit 0, 0 error line(s))
 ```
 
-Failing commands classify error lines (`severity: "error"`), set `status: "failed"`, and propagate
-the underlying exit code.
+Per-line JSON wrapping would cost more tokens than the raw command, so Tokex doesn't. Failing
+commands set `status: "failed"` in the footer and propagate the underlying exit code.
 
 ## Pipe an intent as JSON
 
@@ -50,14 +53,23 @@ After the normal lines, one extra event the agent can read instead of the full l
 The LLM call is best-effort: a network or parse failure prints `(llm skipped: …)` and never changes
 the exit code. Requires a key from [Setup](setup).
 
-## Stack planner (experimental)
+## Prompts & categories
+
+A single quoted arg is a *prompt*, not a command. `category: text` uses that category's header
+(system prompt); free text uses a default header; a JSON object runs several categories at once. The
+model streams its thinking to stderr while you wait; the answer is JSON on stdout. Requires a key
+from [Setup](setup).
 
 ```bash
-tokex plan-stack "build a music player app"
+tokex "plan-stack: build a music player app"
+tokex '{"plan-stack":"music player","theme":"glassy"}'
+tokex "find a python lib for web scraping"
 ```
 
 ```json
-{ "task": "build a music player app", "stack": "tauri", "reason": "…" }
+{ "plan-stack": { "stack": "tauri", "reason": "…" } }
 ```
+
+Add a category by adding a row to `CATEGORIES` in `prompt.rs`.
 
 Next: [MCP](mcp).

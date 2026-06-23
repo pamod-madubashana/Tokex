@@ -15,21 +15,23 @@ One pipeline, four stages, shared by every front-end (CLI, stdin-JSON, MCP).
 3. **Orchestrate** (`orchestrate.rs`) — validate, spawn the `rtk` child, read stdout + stderr on
    **two threads feeding one mpsc channel** so the streams interleave live. No async runtime —
    stdlib `process` + `thread` + `mpsc`.
-4. **Normalize** (`normalize.rs`) — each rtk line becomes `{type, line, severity}`; severity is a
-   keyword classifier (`error|failed|panic|fatal` → error, `warn` → warning, else info).
+4. **Normalize** (`normalize.rs`) — classify each rtk line by severity (`error|failed|panic|fatal`
+   → error, `warn` → warning, else info). The text passes through verbatim; severity is internal.
 
 ## Dual channel
 
-Machine output is **NDJSON on stdout** (one event per line, terminated by a single
-`{"type":"result", …}`); the human-readable summary goes to **stderr**. They are separated by file
-descriptor — human text never lands on stdout. (In MCP mode the machine channel is captured into the
-tool result instead, keeping stdout free for JSON-RPC.)
+Machine output on **stdout** is the rtk output lines **verbatim**, terminated by a single
+`{"type":"result", …}` footer (plus an `{"type":"insight", …}` line when a failure was analyzed).
+Per-line JSON wrapping would cost more tokens than the raw command Tokex is meant to compress. The
+human-readable summary goes to **stderr** — human text never lands on stdout. (In MCP mode the
+machine channel is captured into the tool result instead, keeping stdout free for JSON-RPC.)
 
 ## Modes
 
 Set via [`tokex setup`](setup), applied per run:
 
-- **compression**: `off` (raw `rtk run -c`) · `heuristic` (filtered) · `llm` (filtered + AI insight).
+- **compression**: `off` (raw `rtk run -c`) · `heuristic` (filtered) · `llm` (filtered + AI insight
+  on failures only — a successful command stays token-free).
 - **rtk verbosity**: `normal` · `ultra-compact` (appends `--ultra-compact`).
 
 ## Invariants
