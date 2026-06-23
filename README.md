@@ -121,42 +121,38 @@ The agent can read just that insight instead of the full log. Needs an API key (
 `--llm`, no key is read and no request is made.
 
 **Prompts (a single quoted arg).** Several unquoted args are a command (`tokex git status`); a
-single quoted string is a prompt. **Free text is a task: the model turns it into one shell command,
-Tokex shows it, asks you to confirm, then runs it and returns the output** (not the command).
-`category: text` (or a JSON object of several) instead returns a structured answer.
+single quoted string is a prompt. **For a task, the model decides: run a shell command (and you get
+the real output) or answer.** A safe read-only command runs unprompted; a risky one (delete,
+overwrite, install, push, network, sudo…) asks first. If a command fails, the model reads the error
+and fixes it (up to twice) or answers from it. `category: text` (or a JSON object) returns a
+structured answer instead.
 
 ```bash
-tokex "list all rust projects in the current dir"       # task → model writes a command, you confirm, Tokex runs it
+tokex "list all rust projects in the current dir"       # → runs `find … | sed …`, prints the list
+tokex "what does the ? operator do?"                    # → answers (rendered markdown)
 tokex "plan-stack: build a music player app"            # category → structured answer
-tokex '{"plan-stack":"music player","theme":"glassy"}'  # several categories at once
 ```
 
-Two modes. `tokex "…"` is for **you**: a spinner while waiting, then the model's thinking streamed
-live to stderr. `tokex -m "…"` is for **another agent**: no spinner, no thinking — just the output
-on stdout. Both confirm before running (a free model can emit a wrong or destructive command);
-`-m` reads the yes from stdin (`printf 'y\n' | tokex -m "…"`), and no input safely aborts.
+Two modes. `tokex "…"` is for **you**: a spinner while waiting, the model's thinking streamed to
+stderr, and answers rendered as ANSI markdown (syntax-highlighted code). `tokex -m "…"` is for
+**another agent**: no spinner, no thinking, raw text — just the output on stdout. A risky command's
+confirmation reads stdin (`printf 'y\n' | tokex -m "…"`); no input safely aborts.
 
 ```text
 $ tokex "list all rust projects in the current dir"
-| thinking...                       # spinner, then streamed reasoning (stderr)
-$ find . -name Cargo.toml | sed 's|/Cargo.toml||' | sort
-Run this command? [y/N] y
-.                                   # the command's output (stdout)
-```
-```json
-// tokex "plan-stack: …"
-{ "plan-stack": { "stack": "tauri", "reason": "cross-platform desktop; small binaries" } }
+$ find . -name Cargo.toml | sed 's|/Cargo.toml||' | sort      # safe → runs, no prompt
+.
 ```
 
-**Roles (offload a task to a role-specific model).** `tokex <role> "<task>"` hands a small task to a
-model picked for that role and returns its answer — the calling agent just waits, spending no tokens
-thinking. Roles return text (a plan, code, an answer); nothing runs, so there's no confirmation.
+**Roles (offload to a role-specific model).** `tokex <role> "<task>"` runs the same decide-then-do
+flow on a model picked for that role, so a calling agent offloads work and just waits. With no role,
+`assistant` is the default.
 
 ```bash
-tokex planner "release this crate to crates.io"     # glm
-tokex coder "a Rust fn that reverses a string"      # deepseek
-tokex assistant "what does the ? operator do?"      # qwen
-# also: router (nemotron-nano), orchestrator (nemotron-ultra)
+tokex planner "plan releasing this crate to crates.io"   # glm
+tokex coder "write a Rust fn that reverses a string"     # deepseek
+tokex orchestrator "build the release artifacts"         # nemotron-ultra
+# also: router (nemotron-nano), assistant (qwen, default)
 ```
 
 Roles share your configured endpoint + key (NVIDIA NIM), swapping in the role's model id. Add or

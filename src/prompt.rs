@@ -50,12 +50,17 @@ rationale (one concise sentence). No code, no markdown, no other fields.",
 const DEFAULT_HEADER: &str = "You are a concise senior software engineer. Answer the developer's \
 question briefly and practically. No preamble, no markdown headings.";
 
-// Free-text tasks: turn the request into ONE shell command that tokex then runs.
-const TASK_SYSTEM: &str = "Convert the user's request into ONE shell command that accomplishes it in \
-the CURRENT working directory. Stay within the current directory tree unless the request explicitly \
-names another path — never scan the whole filesystem or the drive root. Prefer portable POSIX tools \
-and read-only commands for queries. Output ONLY the command on a single line — no explanation, no \
-markdown, no code fences.";
+// A task either runs a command (and we return the REAL output) or is answered in text. The model
+// decides and replies with JSON: {"run":"<command>"} or {"answer":"<text>"}.
+const DECISION_SYSTEM: &str = "You fulfill a developer's request from their CURRENT working \
+directory. Decide how to respond:\n\
+- If running ONE shell command produces the real result (list/count/search files, git, build, \
+inspect, file ops), reply with EXACTLY {\"run\":\"<command>\"} — ONE simple, correct command, stay \
+within the current directory tree, never scan the whole filesystem or drive root, prefer POSIX \
+tools. Keep it minimal; avoid fragile `-exec`/subshell chains.\n\
+- Otherwise reply with EXACTLY {\"answer\":\"<concise answer>\"}.\n\
+Output ONLY the JSON object — no markdown, no extra text.";
+
 
 /// The header (system prompt) bound to a category, if it is known.
 pub fn header(category: &str) -> Option<&'static str> {
@@ -103,14 +108,9 @@ pub fn role(name: &str) -> Option<(&'static str, &'static str)> {
     ROLES.iter().find(|(n, _, _)| *n == name).map(|(_, m, h)| (*m, *h))
 }
 
-/// Offload a task to a role's model and return its answer. Same endpoint/key as the configured LLM,
-/// but the role's model and header. Roles return text (a plan, code, an answer) — they don't run
-/// commands, so there's no confirmation step. User mode streams thinking to stderr; Model mode is
-/// silent. The answer goes to stdout via the caller.
-pub fn run_role(name: &str, task: &str, base: &LlmConfig, mode: Mode) -> Result<String, String> {
-    let (model, header) = role(name).ok_or_else(|| format!("unknown role '{name}'"))?;
-    let cfg = LlmConfig { url: base.url.clone(), key: base.key.clone(), model: model.to_string() };
-    Ok(one_call(&cfg, header, task, mode)?.trim().to_string())
+/// Build an `LlmConfig` that reuses the configured endpoint + key but swaps in `model`.
+pub fn with_model(base: &LlmConfig, model: &str) -> LlmConfig {
+    LlmConfig { url: base.url.clone(), key: base.key.clone(), model: model.to_string() }
 }
 
 /// How a single bare argument should be handled.
@@ -165,35 +165,201 @@ pub fn parse_json(s: &str) -> Result<Vec<(String, String)>, String> {
     Ok(pairs)
 }
 
-/// Turn a free-text task into a command, run it through rtk, and return the exit code. The output
-/// is the command's output: live on stdout for User mode, captured-and-printed for Model mode.
-pub fn run_task(cfg: &LlmConfig, task: &str, mode: Mode, opts: &Options) -> Result<i32, String> {
-    let cmd = gen_command(cfg, task, mode)?;
-    // A free model can emit a wrong or destructive command (it once tried to scan all of C:\).
-    // Always show it and require an explicit yes before running — in both modes. No TTY / no `y`
-    // on stdin = abort, never run.
-    if !confirm(&cmd) {
-        let _ = writeln!(std::io::stderr(), "aborted (not confirmed).");
-        return Ok(130); // 128 + SIGINT, the "cancelled by user" convention
-    }
-    let intent = Intent::from_command(&cmd);
-    // Generated commands are arbitrary shell (pipes, redirects), so run via `rtk run -c` (raw),
-    // not the per-tool native filter which would split `find … | wc -l` and break the pipe.
-    // No LLM insight on the run itself — the caller asked for output, not analysis.
-    let exec = Options { raw: true, footer: false, llm_on_failure: false, ..*opts };
-    match mode {
-        // Output only either way; User additionally sees rtk's human summary on stderr.
-        Mode::User => {
-            orchestrate::run(&intent, &mut std::io::stdout(), &mut std::io::stderr(), None, &exec)
-        }
-        Mode::Model => {
-            orchestrate::run(&intent, &mut std::io::stdout(), &mut std::io::sink(), None, &exec)
+/// Fulfill a task: ask the model to decide between running a command or answering, then do it.
+/// `role_header` biases the decision (and is the role's persona); `cfg` carries the chosen model.
+/// Returns the exit code (0 for an answered task). Prints the real command output, or the answer,
+/// to stdout.
+pub fn fulfill(
+    task: &str,
+    cfg: &LlmConfig,
+    role_header: Option<&str>,
+    mode: Mode,
+    opts: &Options,
+) -> Result<i32, String> {
+    // Generate for the shell we actually run on (see `exec_capture`): PowerShell on Windows, POSIX
+    // bash elsewhere. Mismatching them is what makes a Windows run try to execute Linux commands.
+    let shell = if cfg!(windows) {
+        "Any command runs in Windows PowerShell — use PowerShell cmdlets and syntax (Get-ChildItem, \
+Select-String, Measure-Object, Select-Object, Where-Object). Do NOT use bash/POSIX tools (no sed, \
+awk, grep, or `find` with -printf)."
+    } else {
+        "Any command runs in a POSIX bash shell — use POSIX tools (find, grep, sed, awk, wc, ls, \
+git); never PowerShell or cmd syntax."
+    };
+    let system = match role_header {
+        Some(h) => format!("{h}\n\n{DECISION_SYSTEM} {shell}"),
+        None => format!("{DECISION_SYSTEM} {shell}"),
+    };
+    let raw = one_call(cfg, &system, task, mode)?;
+    match parse_decision(&raw) {
+        Decision::Run(cmd) => run_command(&cmd, task, cfg, mode, opts),
+        Decision::Answer(text) => {
+            print_answer(&text, mode);
+            Ok(0)
         }
     }
 }
 
-/// Show the generated command and require an explicit yes from stdin before running it. Default No:
-/// an empty line, EOF (no TTY / no input piped), or read error all decline.
+// Up to this many model-driven fixes after a command fails before we give up and show the error.
+const MAX_FIXES: usize = 2;
+
+/// Print an answer to stdout. User mode renders markdown to ANSI (headers, lists, syntax-highlighted
+/// code blocks) so it reads in a terminal instead of showing raw ``` fences; Model mode prints the
+/// raw text, since an agent wants plain markdown, not escape codes.
+fn print_answer(text: &str, mode: Mode) {
+    match mode {
+        Mode::User => {
+            let opts = markdown_to_ansi::Options {
+                syntax_highlight: true,
+                // Wrap to the terminal width when known; otherwise let the terminal wrap.
+                width: std::env::var("COLUMNS").ok().and_then(|c| c.parse().ok()),
+                code_bg: true,
+            };
+            println!("{}", markdown_to_ansi::render(text, &opts));
+        }
+        Mode::Model => println!("{text}"),
+    }
+}
+
+enum Decision {
+    Run(String),
+    Answer(String),
+}
+
+/// Read the model's JSON decision: `{"run":…}` → run a command, `{"answer":…}` → text. Anything that
+/// isn't our JSON is treated as a plain answer (graceful when a model ignores the format).
+fn parse_decision(content: &str) -> Decision {
+    if let (Some(a), Some(b)) = (content.find('{'), content.rfind('}')) {
+        if a < b {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content[a..=b]) {
+                if let Some(cmd) = v.get("run").and_then(|x| x.as_str()) {
+                    if !cmd.trim().is_empty() {
+                        return Decision::Run(cmd.trim().to_string());
+                    }
+                }
+                if let Some(ans) = v.get("answer").and_then(|x| x.as_str()) {
+                    return Decision::Answer(ans.trim().to_string());
+                }
+            }
+        }
+    }
+    Decision::Answer(content.trim().to_string())
+}
+
+/// Run a command and return its exit code, fixing it via the model on failure (up to `MAX_FIXES`).
+/// Safe (read-only) commands run without asking; a risky one is confirmed first. On final success
+/// the real output is printed to stdout; if every attempt fails, the model answers from the error.
+fn run_command(
+    cmd: &str,
+    task: &str,
+    cfg: &LlmConfig,
+    mode: Mode,
+    opts: &Options,
+) -> Result<i32, String> {
+    let mut cmd = cmd.to_string();
+    for attempt in 0..=MAX_FIXES {
+        if is_risky(&cmd) {
+            // A destructive/system-changing command earns a checkpoint; default No.
+            if !confirm(&cmd) {
+                let _ = writeln!(std::io::stderr(), "aborted (not confirmed).");
+                return Ok(130); // 128 + SIGINT
+            }
+        } else {
+            let _ = writeln!(std::io::stderr(), "$ {cmd}"); // safe → just show what runs
+        }
+
+        let (code, output) = exec_capture(&cmd, opts)?;
+        if code == 0 {
+            print!("{output}");
+            return Ok(0);
+        }
+        if attempt == MAX_FIXES {
+            // Out of fixes: let the model turn the error into a useful answer instead of raw failure.
+            let answer = fix_or_answer(cfg, task, &cmd, &output, mode)?;
+            match answer {
+                Decision::Answer(a) => print_answer(&a, mode),
+                Decision::Run(_) => print!("{output}"), // still wants to run; just show the error
+            }
+            return Ok(code);
+        }
+        // Failed but fixes remain: feed the error back and try the model's next move.
+        match fix_or_answer(cfg, task, &cmd, &output, mode)? {
+            Decision::Run(next) => cmd = next,
+            Decision::Answer(a) => {
+                print_answer(&a, mode);
+                return Ok(0);
+            }
+        }
+    }
+    unreachable!()
+}
+
+/// Ask the model to fix a failed command (→ `Run`) or, if it can't, answer the task from the error
+/// (→ `Answer`). Streamed/quiet per mode like any other call.
+fn fix_or_answer(
+    cfg: &LlmConfig,
+    task: &str,
+    cmd: &str,
+    error: &str,
+    mode: Mode,
+) -> Result<Decision, String> {
+    let system = "A shell command you proposed failed. Either fix it or answer the user's request \
+from the error. Reply with EXACTLY {\"run\":\"<corrected command>\"} if a different command would \
+work (POSIX bash, one line), otherwise {\"answer\":\"<answer>\"}. Output ONLY the JSON.";
+    let user =
+        format!("Request: {task}\nFailed command: {cmd}\nError output:\n{}", trunc(error, 1500));
+    Ok(parse_decision(&one_call(cfg, system, &user, mode)?))
+}
+
+/// Run `cmd` via rtk and capture its combined output. Generated commands target the native shell —
+/// PowerShell on Windows, bash on Unix — and `rtk run -c` uses the OS shell (cmd.exe on Windows),
+/// which mangles pipes/quoting. So write the command to a temp script and invoke the native
+/// interpreter on it by path: no inline quoting, no cross-shell mount surprises.
+fn exec_capture(cmd: &str, opts: &Options) -> Result<(i32, String), String> {
+    let pid = std::process::id();
+    // Fail hard on error so a bad command gets a non-zero exit (PowerShell non-terminating errors
+    // and bash mid-pipeline failures otherwise pass silently) — that's what drives the fix retry.
+    let (tmp, run_line, content) = if cfg!(windows) {
+        let p = std::env::temp_dir().join(format!("tokex-task-{pid}.ps1"));
+        let line = format!("powershell -NoProfile -ExecutionPolicy Bypass -File {}", p.display());
+        (p, line, format!("$ErrorActionPreference = 'Stop'\n{cmd}\n"))
+    } else {
+        let p = std::env::temp_dir().join(format!("tokex-task-{pid}.sh"));
+        let line = format!("bash {}", p.display());
+        (p, line, format!("set -e\n{cmd}\n"))
+    };
+    std::fs::write(&tmp, content).map_err(|e| format!("temp script: {e}"))?;
+    // ponytail: temp paths have no spaces, so the unquoted path is safe; quote only if that breaks.
+    let exec = Options { raw: true, footer: false, llm_on_failure: false, ..*opts };
+    let mut buf: Vec<u8> = Vec::new();
+    let result = orchestrate::run(&Intent::from_command(run_line), &mut buf, &mut std::io::sink(), None, &exec);
+    let _ = std::fs::remove_file(&tmp);
+    let code = result?;
+    Ok((code, String::from_utf8_lossy(&buf).into_owned()))
+}
+
+/// A command is risky (→ confirm) if it can delete, overwrite, fetch+run, escalate, or mutate the
+/// repo/system. Read-only inspection (Get-ChildItem/find/ls/cat/grep/git status…) is safe and runs
+/// unprompted. Covers both POSIX tools and PowerShell cmdlets.
+/// ponytail: substring blocklist, not a parser; err toward asking on anything that writes.
+fn is_risky(cmd: &str) -> bool {
+    const RISKY: &[&str] = &[
+        // POSIX
+        "rm ", "rmdir", "mv ", "dd ", "mkfs", "chmod", "chown", "kill", "shutdown", "reboot",
+        "sudo", " su ", "truncate", "del ", "format ", "fdisk", ">", "tee ", "curl", "wget",
+        "git push", "git reset", "git clean", "git checkout", "git rebase", "git commit",
+        "install", "uninstall", "apt", "brew",
+        // PowerShell cmdlets
+        "remove-item", "move-item", "rename-item", "set-content", "add-content", "out-file",
+        "new-item", "clear-content", "stop-process", "invoke-webrequest", "invoke-expression",
+        "iex ", "start-process",
+    ];
+    let c = format!(" {} ", cmd.to_ascii_lowercase());
+    RISKY.iter().any(|p| c.contains(p))
+}
+
+/// Confirm a risky command before running. Default No: empty line, EOF (no TTY / no input), or a
+/// read error all decline.
 fn confirm(cmd: &str) -> bool {
     let mut err = std::io::stderr();
     let _ = writeln!(err, "$ {cmd}");
@@ -210,35 +376,13 @@ fn is_yes(s: &str) -> bool {
     matches!(s.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
-fn gen_command(cfg: &LlmConfig, task: &str, mode: Mode) -> Result<String, String> {
-    let system = format!("{TASK_SYSTEM} Target OS: {}.", std::env::consts::OS);
-    let answer = one_call(cfg, &system, task, mode)?;
-    let cmd = extract_command(&answer);
-    if cmd.is_empty() {
-        return Err("model returned no command".into());
+/// Truncate long error output (by chars, UTF-8 safe) before feeding it back to the model.
+fn trunc(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", s.chars().take(max).collect::<String>())
     }
-    Ok(cmd)
-}
-
-/// Pull a single command line out of the model's answer, tolerating ``` fences or a JSON wrapper.
-fn extract_command(text: &str) -> String {
-    let mut t = text.trim();
-    if let Some(rest) = t.strip_prefix("```") {
-        // drop an optional language tag, then the trailing fence
-        let rest = rest.trim_start_matches(|c: char| c.is_alphanumeric()).trim();
-        t = rest.strip_suffix("```").unwrap_or(rest).trim();
-    }
-    if t.starts_with('{') {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(t) {
-            for k in ["command", "cmd", "answer"] {
-                if let Some(c) = v.get(k).and_then(|x| x.as_str()) {
-                    return c.trim().to_string();
-                }
-            }
-        }
-    }
-    // ponytail: first non-empty line; multi-line commands (heredocs) lose their tail — fix if needed.
-    t.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string()
 }
 
 /// Run category prompts and collect the answers into one JSON object keyed by category (`answer`
@@ -292,13 +436,14 @@ fn one_call(cfg: &LlmConfig, system: &str, user: &str, mode: Mode) -> Result<Str
 }
 
 /// Read an OpenAI-compatible SSE stream and accumulate the answer `content`. In User mode the
-/// spinner (started by the caller) runs until the first token, then reasoning + text stream live to
-/// stderr; in Model mode nothing is shown. stdout is never touched here.
+/// spinner (started by the caller) runs until the first reasoning token, then the model's *thinking*
+/// streams live to stderr — the `content` (the JSON answer/command) is accumulated silently so the
+/// caller can print a clean result to stdout. In Model mode nothing is shown. stdout is untouched.
 fn stream(resp: ureq::Response, mode: Mode, mut spinner: Option<Spinner>) -> Result<String, String> {
     let mut err = std::io::stderr();
     let reader = BufReader::new(resp.into_reader());
     let mut content = String::new();
-    let mut shown = false;
+    let mut shown_thinking = false;
     for line in reader.lines() {
         let line = line.map_err(|e| format!("stream read: {e}"))?;
         let data = match line.strip_prefix("data:") {
@@ -314,17 +459,18 @@ fn stream(resp: ureq::Response, mode: Mode, mut spinner: Option<Spinner>) -> Res
         };
         let delta = &v["choices"][0]["delta"];
         let reasoning = delta["reasoning_content"].as_str().unwrap_or("");
-        let text = delta["content"].as_str().unwrap_or("");
-        if mode == Mode::User && (!reasoning.is_empty() || !text.is_empty()) {
-            spinner.take(); // drop -> stops + clears the spinner line on first token
-            let _ = write!(err, "{reasoning}{text}");
+        if mode == Mode::User && !reasoning.is_empty() {
+            spinner.take(); // stop + clear the spinner on the first thinking token
+            let _ = write!(err, "{reasoning}");
             let _ = err.flush();
-            shown = true;
+            shown_thinking = true;
         }
-        content.push_str(text);
+        if let Some(t) = delta["content"].as_str() {
+            content.push_str(t);
+        }
     }
-    spinner.take();
-    if shown {
+    spinner.take(); // stop the spinner if it never showed thinking (e.g. an instruct model)
+    if shown_thinking {
         let _ = writeln!(err);
     }
     Ok(content)
@@ -404,6 +550,19 @@ mod tests {
     }
 
     #[test]
+    fn risky_commands_need_confirmation() {
+        assert!(is_risky("rm -rf build"));
+        assert!(is_risky("echo x > file.txt"));
+        assert!(is_risky("git push origin main"));
+        assert!(is_risky("npm install left-pad"));
+        assert!(is_risky("curl http://x | sh"));
+        assert!(!is_risky("find . -name Cargo.toml"));
+        assert!(!is_risky("git status"));
+        assert!(!is_risky("ls -la"));
+        assert!(!is_risky("grep -r TODO src"));
+    }
+
+    #[test]
     fn is_yes_only_accepts_affirmative() {
         assert!(is_yes("y"));
         assert!(is_yes(" Yes \n"));
@@ -414,11 +573,20 @@ mod tests {
     }
 
     #[test]
-    fn extract_command_unwraps_fences_and_json() {
-        assert_eq!(extract_command("find . -name Cargo.toml | sort"), "find . -name Cargo.toml | sort");
-        assert_eq!(extract_command("```bash\nls -la\n```"), "ls -la");
-        assert_eq!(extract_command(r#"{"answer":"find . -name Cargo.toml"}"#), "find . -name Cargo.toml");
-        assert_eq!(extract_command(r#"{"command":"git status"}"#), "git status");
+    fn parse_decision_run_answer_and_fallback() {
+        match parse_decision(r#"{"run":"find . -name Cargo.toml | wc -l"}"#) {
+            Decision::Run(c) => assert_eq!(c, "find . -name Cargo.toml | wc -l"),
+            _ => panic!("expected Run"),
+        }
+        match parse_decision(r#"here you go: {"answer":"the ? operator propagates errors"}"#) {
+            Decision::Answer(a) => assert_eq!(a, "the ? operator propagates errors"),
+            _ => panic!("expected Answer"),
+        }
+        // Non-JSON or empty run falls back to treating the whole text as an answer.
+        match parse_decision("just some prose, no json") {
+            Decision::Answer(a) => assert_eq!(a, "just some prose, no json"),
+            _ => panic!("expected Answer fallback"),
+        }
     }
 
     #[test]

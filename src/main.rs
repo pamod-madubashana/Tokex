@@ -244,7 +244,8 @@ fn is_passthrough(first: &str) -> bool {
 fn dispatch_one(arg: &str, mode: prompt::Mode) {
     match prompt::classify(arg) {
         prompt::Dispatch::Command(cmd) => run_intent(Intent::from_command(cmd)),
-        prompt::Dispatch::Prompt(task) => run_task(&task, mode),
+        // No role given → default to the `assistant` role.
+        prompt::Dispatch::Prompt(task) => run_role("assistant", &task, mode),
         prompt::Dispatch::Json(s) => match prompt::parse_json(&s) {
             Ok(pairs) => run_prompt(pairs, mode),
             Err(e) => {
@@ -275,32 +276,27 @@ fn exec_opts(cfg: &config::Config) -> orchestrate::Options {
     }
 }
 
-/// Role: offload a task to a role-specific model and print its answer. No command runs, so no
-/// confirmation — roles return text (a plan, code, an answer).
+/// Role: offload a task to a role-specific model. The model decides whether to run a command (real
+/// output) or answer; the role just picks which model and biases it with the role's persona.
 fn run_role(role: &str, task: &str, mode: prompt::Mode) -> ! {
     if task.is_empty() {
         eprintln!("tokex: role '{role}' needs a task, e.g. tokex {role} \"...\"");
         exit(2);
     }
-    let cfg = config::load();
-    let base = load_llm_or_exit(&cfg);
-    match prompt::run_role(role, task, &base, mode) {
-        Ok(answer) => {
-            println!("{answer}");
-            exit(0);
-        }
-        Err(e) => {
-            eprintln!("tokex: {e}");
-            exit(1);
-        }
-    }
+    let (model, header) = prompt::role(role).unwrap_or_else(|| {
+        eprintln!("tokex: unknown role '{role}'");
+        exit(2);
+    });
+    fulfill(task, model, Some(header), mode);
 }
 
-/// Free-text task: the model produces a command and tokex runs it, returning the command's output.
-fn run_task(task: &str, mode: prompt::Mode) -> ! {
+/// Shared task fulfilment: pick the endpoint/key from config, swap in `model`, and let `prompt`
+/// decide run-vs-answer.
+fn fulfill(task: &str, model: &str, role_header: Option<&str>, mode: prompt::Mode) -> ! {
     let cfg = config::load();
-    let llm_cfg = load_llm_or_exit(&cfg);
-    match prompt::run_task(&llm_cfg, task, mode, &exec_opts(&cfg)) {
+    let base = load_llm_or_exit(&cfg);
+    let model_cfg = prompt::with_model(&base, model);
+    match prompt::fulfill(task, &model_cfg, role_header, mode, &exec_opts(&cfg)) {
         Ok(code) => exit(code),
         Err(e) => {
             eprintln!("tokex: {e}");
