@@ -137,6 +137,19 @@ tokex "find a python lib for web scraping"            # no category
 Failing commands set `status: "failed"` in the footer and propagate the underlying exit code; in
 `llm` mode a failure also gets an `insight` line (a successful command stays token-free).
 
+**Scripting (repetitive or multi-file changes).** Don't edit ten files by hand to rename a token —
+write one idempotent script under `Scripts/` and let Tokex run + verify it:
+
+```bash
+tokex script                      # creates Scripts/ and prints the workflow
+# ... write Scripts/rename.sh ...
+tokex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
+```
+
+Tokex runs the script through rtk (by extension: `.sh`/`.ps1`/`.py`), then `git diff --stat` so you
+**verify from the diff, not by re-reading files**. The agent writes the script; Tokex runs and
+verifies it. (`git diff` shows tracked edits; new files show via `git status`.)
+
 ## Setup (provider, API key, modes)
 
 Configure Tokex *after* install with one interactive command — no file editing:

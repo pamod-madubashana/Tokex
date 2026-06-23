@@ -72,4 +72,19 @@ tokex "find a python lib for web scraping"
 
 Add a category by adding a row to `CATEGORIES` in `prompt.rs`.
 
+## Scripting (repetitive or multi-file changes)
+
+Don't edit many files by hand for the same change. Write one idempotent script under `Scripts/`,
+then let tokex run + verify it:
+
+```bash
+tokex script                      # creates Scripts/ and prints the workflow
+# ... write Scripts/rename.sh ...
+tokex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
+```
+
+tokex runs the script through rtk (by extension: `.sh` / `.ps1` / `.py`), then `git diff --stat` so
+you verify the change from the diff instead of re-reading every file. The agent writes the script;
+tokex runs and verifies it. (`git diff` shows tracked edits; new files show via `git status`.)
+
 Next: [MCP](mcp).

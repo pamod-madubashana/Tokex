@@ -31,6 +31,7 @@ cargo run -- run "git status"     # CLI front-end: forward a command through rtk
 cargo run -- git status           # same thing — run subcommand optional (several args = command)
 echo '{"tool":"rtk","cmd":"cargo --version"}' | cargo run --   # stdin-JSON front-end
 cargo run -- "plan-stack: music player app"                    # category prompt (single quoted arg)
+cargo run -- script Scripts/rename.sh                          # run a script through rtk + verify via git diff
 ```
 
 ## Architecture
@@ -119,6 +120,17 @@ several `category: text` pairs; `<known-category>: text` → that category; othe
 default-header prompt; a lone token → a command. Each **category** binds a name to a *header*
 (system prompt) in the `CATEGORIES` table — **add a category by adding a row**, nothing else.
 Prompts stream (thinking on stderr, answer JSON on stdout) and require an LLM key.
+
+## Scripting (`script.rs`)
+
+**Repetitive or multi-file change? Write a script, don't edit each file.** For things like renaming
+a token across many files, the agent writes ONE idempotent script under `Scripts/` (created if
+missing) and runs `tokex script Scripts/<name>.sh`. tokex runs it through rtk (never raw — `rtk run
+-c "bash …"`, picked by extension: `.sh`/`.ps1`/`.py`), then runs `git diff --stat` so the change is
+**verified from the diff, not by re-reading files**. Exit code is the script's; success = it ran.
+tokex does not generate the script — the agent does; tokex provides the instruction, run, and verify.
+`tokex script` with no file just creates `Scripts/` and prints the workflow. (`git diff` only shows
+tracked modifications — new/untracked files show via `git status`.)
 
 ## Out of scope (deferred, do not add speculatively)
 
