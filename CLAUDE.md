@@ -56,9 +56,10 @@ and piped stdin, a JSON intent.
 
 **Front-ends share the core.** CLI, stdin-JSON, and the MCP server (`mcp.rs`, `tokex mcp`) all funnel
 into the same `orchestrate::run`. MCP is a hand-rolled JSON-RPC 2.0 stdio server (sync, no tokio)
-exposing a `run` tool; it captures the machine channel into a buffer and returns the events as the
-tool result. **stdout is the JSON-RPC channel in MCP mode** — the core writes to in-memory buffers,
-never stdout, so nothing corrupts the protocol.
+exposing `run` (captures the machine channel, returns events) and `set_agent` (the model identifies
+its platform when there's no TTY — persists `config.agent` and installs the graphify skill in the
+background). **stdout is the JSON-RPC channel in MCP mode** — the core and the `set_agent` bootstrap
+write to buffers / detached null stdio, never stdout, so nothing corrupts the protocol.
 
 ## Invariants
 

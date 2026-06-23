@@ -44,6 +44,19 @@ tool result:
 
 `isError` is set when the command exits non-zero.
 
+## The `set_agent` tool
+
+tokex installs a [graphify](architecture) code-map skill for the agent in use. When it can't detect
+which agent that is (no terminal to prompt, nothing in config or the environment), a `run` result
+includes a note asking the model to identify itself. The model then calls `set_agent`:
+
+```json
+{ "agent": "codex" }
+```
+
+tokex persists the platform and installs the graphify skill for it in the background. This is the
+no-TTY equivalent of the interactive agent prompt — the model tells tokex what it's running in.
+
 ## Protocol notes
 
 Tokex implements a focused subset of MCP: `initialize`, `tools/list`, `tools/call`, and `ping`, over
