@@ -205,20 +205,22 @@ fn one_call(cfg: &LlmConfig, system: &str, user: &str, mode: Mode) -> Result<Str
             {"role": "user", "content": user},
         ],
     });
+    // Start the spinner BEFORE the request: a reasoning model can hold the connection for seconds
+    // (connecting + thinking server-side) before the first byte. Dropped on error or first token.
+    let spinner = (mode == Mode::User).then(|| Spinner::start("thinking"));
     let resp = ureq::post(&cfg.url)
         .set("Authorization", &format!("Bearer {}", cfg.key))
         .set("Content-Type", "application/json")
         .send_json(body)
         .map_err(|e| format!("request failed: {e}"))?;
-    stream(resp, mode)
+    stream(resp, mode, spinner)
 }
 
-/// Read an OpenAI-compatible SSE stream and accumulate the answer `content`. In User mode a spinner
-/// runs until the first token, then reasoning + text stream live to stderr; in Model mode nothing is
-/// shown. stdout is never touched here.
-fn stream(resp: ureq::Response, mode: Mode) -> Result<String, String> {
+/// Read an OpenAI-compatible SSE stream and accumulate the answer `content`. In User mode the
+/// spinner (started by the caller) runs until the first token, then reasoning + text stream live to
+/// stderr; in Model mode nothing is shown. stdout is never touched here.
+fn stream(resp: ureq::Response, mode: Mode, mut spinner: Option<Spinner>) -> Result<String, String> {
     let mut err = std::io::stderr();
-    let mut spinner = (mode == Mode::User).then(|| Spinner::start("thinking"));
     let reader = BufReader::new(resp.into_reader());
     let mut content = String::new();
     let mut shown = false;
@@ -253,8 +255,8 @@ fn stream(resp: ureq::Response, mode: Mode) -> Result<String, String> {
     Ok(content)
 }
 
-/// A tiny stderr spinner that animates until dropped. ponytail: braille frames + an atomic stop
-/// flag; no progress crate for a single waiting indicator.
+/// A tiny stderr spinner that animates until dropped. ponytail: ASCII frames (render everywhere,
+/// incl. cmd.exe) + an atomic stop flag; cleared by overwriting with spaces, not an ANSI escape.
 struct Spinner {
     stop: Arc<AtomicBool>,
     handle: Option<thread::JoinHandle<()>>,
@@ -266,16 +268,16 @@ impl Spinner {
         let flag = stop.clone();
         let label = label.to_string();
         let handle = thread::spawn(move || {
-            let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let frames = ['|', '/', '-', '\\'];
             let mut err = std::io::stderr();
             let mut i = 0;
             while !flag.load(Ordering::Relaxed) {
                 let _ = write!(err, "\r{} {label}...", frames[i % frames.len()]);
                 let _ = err.flush();
                 i += 1;
-                thread::sleep(Duration::from_millis(80));
+                thread::sleep(Duration::from_millis(100));
             }
-            let _ = write!(err, "\r\x1b[K"); // clear the line
+            let _ = write!(err, "\r{}\r", " ".repeat(label.len() + 6)); // clear the line
             let _ = err.flush();
         });
         Spinner { stop, handle: Some(handle) }
