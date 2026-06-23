@@ -81,6 +81,7 @@ cargo build --release          # builds tokex + rtk into target/release/
 
 ```bash
 tokex run "git status"
+tokex git status        # same thing — the run subcommand is optional
 ```
 
 ```jsonc
