@@ -68,7 +68,12 @@ fn main() {
             i
         }
         Some(Cmd::PlanStack { task }) => {
-            let p = plan::plan(&task);
+            let cfg = config::load();
+            let llm_cfg = llm::LlmConfig::from_config(&cfg);
+            let p = plan::plan(&task, llm_cfg.as_ref()).unwrap_or_else(|e| {
+                eprintln!("tokex: LLM stack planning skipped: {e}");
+                plan::heuristic_plan(&task)
+            });
             println!("{}", serde_json::to_string_pretty(&p).unwrap());
             return;
         }
@@ -79,7 +84,7 @@ fn main() {
             }
             // Bootstrap graphify (install + register skill for the chosen agent + build map) now.
             if config::load().graph_auto {
-                if let Err(e) = graphify::update_blocking() {
+                if let Err(e) = graphify::update_blocking_after_setup() {
                     eprintln!("tokex: graphify setup skipped: {e}");
                 }
             }

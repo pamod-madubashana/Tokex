@@ -7,7 +7,7 @@
 //! Everything here is best-effort: it never blocks or fails a tokex run.
 
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// Does this command plausibly change source the map should re-read?
@@ -17,15 +17,24 @@ pub fn touches_code(command: &str) -> bool {
     let mut t = command.split_whitespace();
     let first = t.next().unwrap_or("");
     let second = t.next().unwrap_or("");
-    const READ_ONLY: &[&str] =
-        &["ls", "tree", "cat", "echo", "pwd", "which", "find", "grep", "wc", "head", "tail", "env"];
+    const READ_ONLY: &[&str] = &[
+        "ls", "tree", "cat", "echo", "pwd", "which", "find", "grep", "wc", "head", "tail", "env",
+    ];
     if READ_ONLY.contains(&first) {
         return false;
     }
     if matches!(first, "git" | "gh")
         && matches!(
             second,
-            "status" | "log" | "diff" | "show" | "branch" | "remote" | "fetch" | "blame" | "ls-files"
+            "status"
+                | "log"
+                | "diff"
+                | "show"
+                | "branch"
+                | "remote"
+                | "fetch"
+                | "blame"
+                | "ls-files"
         )
     {
         return false;
@@ -78,6 +87,27 @@ fn touch(p: Option<PathBuf>) {
     }
 }
 
+fn is_project_dir(dir: &Path) -> bool {
+    const PROJECT_MARKERS: &[&str] = &[
+        ".git",
+        "Cargo.toml",
+        "package.json",
+        "pyproject.toml",
+        "go.mod",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "deno.json",
+        "composer.json",
+        "Gemfile",
+    ];
+    PROJECT_MARKERS.iter().any(|m| dir.join(m).exists())
+}
+
+fn current_project_dir() -> Option<PathBuf> {
+    std::env::current_dir().ok().filter(|d| is_project_dir(d))
+}
+
 /// Make graphifyy importable, auto-`pip install` once (cached via the package marker).
 fn ensure_package(py: &str, verbose: bool) -> bool {
     if exists(data_file(".graphify-ok")) {
@@ -106,7 +136,8 @@ pub fn current_agent() -> Option<String> {
     if !a.trim().is_empty() {
         return Some(a.trim().to_string());
     }
-    if std::env::var_os("CLAUDECODE").is_some() || std::env::var_os("CLAUDE_CODE_ENTRYPOINT").is_some()
+    if std::env::var_os("CLAUDECODE").is_some()
+        || std::env::var_os("CLAUDE_CODE_ENTRYPOINT").is_some()
     {
         return Some("claude".into());
     }
@@ -115,14 +146,14 @@ pub fn current_agent() -> Option<String> {
 
 /// Register the graphify skill for the agent in use (once, via the skill marker). Resolves the
 /// platform from config/env; if unknown, asks the user when interactive, otherwise leaves guidance.
-fn register_skill(py: &str, verbose: bool) {
+fn register_skill(py: &str, verbose: bool, prompt_when_unknown: bool) {
     if exists(data_file(".graphify-skill")) {
         return;
     }
     let platform = match current_agent() {
         Some(p) => p,
         None => {
-            if std::io::stdin().is_terminal() {
+            if prompt_when_unknown && std::io::stdin().is_terminal() {
                 match inquire::Text::new(
                     "Which agent are you using? (graphify platform id like claude, codex, cursor; blank to skip)",
                 )
@@ -169,6 +200,9 @@ pub fn auto_update(command: &str) {
     if !touches_code(command) {
         return;
     }
+    if current_project_dir().is_none() {
+        return;
+    }
     if exists(data_file(".graphify-ok")) {
         let _ = Command::new(py())
             .args(["-m", "graphify", "update", "."])
@@ -203,11 +237,25 @@ pub fn clear_skill_marker() {
 /// `tokex graph` and the post-`setup` bootstrap: install the package, register the skill for the
 /// agent, and refresh the map. Blocking, with visible output.
 pub fn update_blocking() -> Result<(), String> {
+    update_blocking_with_prompt(true)
+}
+
+/// Post-setup bootstrap: setup already asked for the agent. If the user left it blank and
+/// auto-detection cannot identify the agent, skip skill registration without asking again.
+pub fn update_blocking_after_setup() -> Result<(), String> {
+    update_blocking_with_prompt(false)
+}
+
+fn update_blocking_with_prompt(prompt_when_unknown: bool) -> Result<(), String> {
+    let cwd = current_project_dir().ok_or_else(|| {
+        "not in a project directory; skipping graphify code-map refresh".to_string()
+    })?;
     let py = py();
     if !ensure_package(py, true) {
         return Err("graphify unavailable — need Python + pip to install graphifyy".into());
     }
-    register_skill(py, true);
+    register_skill(py, true, prompt_when_unknown);
+    eprintln!("tokex: refreshing graphify code map in {}", cwd.display());
     if run_inherit(py, &["-m", "graphify", "update", "."]) {
         Ok(())
     } else {
@@ -231,5 +279,18 @@ mod tests {
         assert!(touches_code("cargo build"));
         assert!(touches_code("git commit -m x"));
         assert!(touches_code("npm install"));
+    }
+
+    #[test]
+    fn project_markers_gate_graphify_updates() {
+        let root = std::env::temp_dir().join(format!("tokex-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        assert!(!is_project_dir(&root));
+
+        std::fs::write(root.join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
+        assert!(is_project_dir(&root));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
