@@ -118,24 +118,33 @@ blocking refresh. All best-effort — never blocks or fails a tokex run. Gated b
 ## Prompts & categories (`prompt.rs`)
 
 A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it:
-- **free text → a task** (`Prompt`): the model turns it into ONE shell command, tokex shows it and
-  **requires confirmation** (default No, both modes — a free model can emit a wrong/destructive
-  command), then **runs it through rtk** and returns the command's *output* — not the command. This
-  is the headline path (`tokex "list all rust projects"`). The command runs via `rtk run -c` (raw)
-  so pipes work. `-m` reads the yes from stdin; no input = abort.
+- **free text → a task** (`Prompt`): handled by the **`assistant` role** (the default when none is
+  named). `prompt::fulfill` asks the model to **decide** (`DECISION_SYSTEM`): reply
+  `{"run":"<cmd>"}` or `{"answer":"<text>"}`. A `run` is executed and the **real output** returned;
+  an `answer` is printed (markdown→ANSI in User mode). Headline path: `tokex "list all rust
+  projects"`.
 - `<known-category>: text` (`Category`) or a JSON object (`Json`) → a **structured answer** using
   that category's header (`plan-stack`, `theme`, …). These aren't runnable commands.
 - a lone token → a command.
 
-Each **category** binds a name to a *header* (system prompt) in the `CATEGORIES` table — **add a
-category by adding a row**. Prompts require an LLM key.
+**Execution of a chosen command** (`run_command` → `exec_capture`): commands are generated for the
+**native shell** — PowerShell on Windows, bash on Unix (the decision prompt is OS-specific) — and run
+by writing the command to a temp script (`.ps1`/`.sh`, with `$ErrorActionPreference='Stop'`/`set -e`
+so errors get a non-zero exit) and invoking the interpreter on it *by path* via rtk (raw). This
+avoids cmd.exe's pipe/quoting mangling and cross-shell mount mismatches. **Safe (read-only) commands
+run unprompted**; only a **risky** one (`is_risky`: delete/overwrite/install/push/network/sudo, POSIX
+*and* PowerShell cmdlets) is confirmed (default No). On failure the model gets the error and **fixes
+the command or answers** from it, up to `MAX_FIXES` (2).
 
-**Roles** (`tokex <role> "<task>"`, e.g. `tokex planner "…"`, `tokex coder "…"`) offload a small
-task to a **role-specific model** and return its answer, so the calling agent just waits and spends
-no tokens thinking. The `ROLES` table binds each role to `(model id, header)` — `planner` (glm),
-`router`/`orchestrator` (nemotron nano/ultra), `coder` (deepseek), `assistant` (qwen). Same endpoint
-+ key as the configured LLM, role's model id swapped in. Roles **return text** (a plan, code, an
-answer) — they don't run commands, so no confirmation. A role wins dispatch when it's the first arg.
+Each **category** binds a name to a *header* in the `CATEGORIES` table — **add a category by adding a
+row**. Prompts require an LLM key.
+
+**Roles** (`tokex <role> "<task>"`, e.g. `tokex planner "…"`, `tokex coder "…"`) pick a
+**role-specific model** for the same decide-run-or-answer flow, so a calling agent offloads work and
+just waits. The `ROLES` table binds each role to `(model id, header)` — `planner` (glm),
+`router`/`orchestrator` (nemotron nano/ultra), `coder` (deepseek), `assistant` (qwen, the default).
+Same endpoint + key as the configured LLM, role's model id swapped in. A role wins dispatch when
+it's the first arg.
 
 Two modes (`prompt::Mode`): **User** (default) shows a stderr spinner until the first token then
 streams the model's thinking live; **Model** (`tokex -m "…"`, for agents) shows neither — just the

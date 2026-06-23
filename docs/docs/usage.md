@@ -55,38 +55,33 @@ the exit code. Requires a key from [Setup](setup).
 
 ## Prompts & categories
 
-A single quoted arg is a *prompt*, not a command. **Free text is a task: the model turns it into one
-shell command, tokex shows it, asks you to confirm, then runs it and returns the output** — not the
-command. `category: text` (or a JSON object of several) instead returns a structured answer. Requires
-a key from [Setup](setup). The confirmation is default-No and applies in both modes (a free model can
-emit a wrong/destructive command); `-m` reads the yes from stdin, and no input aborts.
+A single quoted arg is a *prompt*, not a command. **For a task, the model decides: run a shell
+command (you get the real output) or answer.** A safe read-only command runs unprompted; a risky one
+(delete, overwrite, install, push, network, sudo…) asks first. If a command fails, the model reads
+the error and fixes it (up to twice) or answers from it. `category: text` (or a JSON object) returns
+a structured answer instead. Requires a key from [Setup](setup).
 
 ```bash
-tokex "list all rust projects in the current dir"     # task → command, run, output
+tokex "list all rust projects in the current dir"     # → runs a command, prints the list
+tokex "what does the ? operator do?"                  # → answers (rendered markdown)
 tokex "plan-stack: build a music player app"          # category → structured answer
-tokex '{"plan-stack":"music player","theme":"glassy"}'
 ```
 
-```json
-// tokex "plan-stack: …"
-{ "plan-stack": { "stack": "tauri", "reason": "…" } }
-```
-
-Two modes: `tokex "…"` (User) shows a spinner then streams the model's thinking to stderr; `tokex -m
-"…"` (Model, for agents) shows neither — just the output on stdout. Add a category by adding a row to
+Two modes: `tokex "…"` (User) shows a spinner, streams thinking to stderr, and renders answers as
+ANSI markdown; `tokex -m "…"` (Model, for agents) shows neither — just raw output on stdout. A risky
+command's confirmation reads stdin, and no input aborts. Add a category by adding a row to
 `CATEGORIES` in `prompt.rs`.
 
 ## Roles (offload to a role-specific model)
 
-`tokex <role> "<task>"` hands a small task to a model chosen for that role and returns its answer —
-the calling agent just waits, spending no tokens thinking. Roles return text (a plan, code, an
-answer); nothing runs, so there's no confirmation.
+`tokex <role> "<task>"` runs the same decide-then-do flow on a model chosen for that role, so a
+calling agent offloads work and just waits. With no role, `assistant` is the default.
 
 ```bash
-tokex planner "release this crate to crates.io"     # glm
-tokex coder "a Rust fn that reverses a string"      # deepseek
-tokex assistant "what does the ? operator do?"      # qwen
-# also: router (nemotron-nano), orchestrator (nemotron-ultra)
+tokex planner "plan releasing this crate to crates.io"   # glm
+tokex coder "write a Rust fn that reverses a string"     # deepseek
+tokex orchestrator "build the release artifacts"         # nemotron-ultra
+# also: router (nemotron-nano), assistant (qwen, default)
 ```
 
 Roles share your configured endpoint + key, swapping in the role's model id. Add or retune a role by
