@@ -96,10 +96,15 @@ After a **code-changing** `tokex run` (read-only commands like `git status` skip
 - if not → runs the one-time bootstrap **detached** (re-spawns `tokex graph`) so it never blocks the
   command.
 
-The one-time bootstrap (`ensure`, cached via a `.graphify-ok` marker in the data dir):
-`pip install graphifyy` if needed → **`graphify install`** (registers the skill with the agent, e.g.
-`~/.claude/skills/graphify/` + a CLAUDE.md entry) → build the map. All best-effort — never blocks or
-fails a tokex run. `tokex graph` forces a blocking refresh. Gated by `graph_auto` (`tokex setup`).
+The one-time bootstrap: `ensure_package` (`pip install graphifyy`, cached via `.graphify-ok`) →
+`register_skill` (cached via `.graphify-skill`) → build the map. **Skill registration targets the
+agent actually in use**, not just Claude: `resolve_platform` reads `config.agent`, else env
+auto-detects Claude (`CLAUDECODE`), else asks the user when interactive (or leaves guidance to run
+`tokex setup`). It calls `graphify install` (claude), `graphify install --platform <p>`, or
+`graphify <p> install` (fallback for graphify's per-platform subcommands).
+
+`tokex setup` runs the whole bootstrap up front (the "start project" moment); `tokex graph` forces a
+blocking refresh. All best-effort — never blocks or fails a tokex run. Gated by `graph_auto`.
 
 ## Out of scope (deferred, do not add speculatively)
 

@@ -19,6 +19,12 @@ It prompts for:
 | **API key** | masked input from any free OpenAI-compatible provider |
 | **Compression** | `heuristic` (rtk filter, default) · `llm` (rtk + AI insight) · `off` (raw) |
 | **RTK output** | `normal` · `ultra-compact` |
+| **Graph auto-update** | keep the graphify code map fresh after code changes (default yes) |
+| **Agent** | your graphify platform (`claude`, `codex`, `cursor`, …; blank = auto-detect) |
+
+When graph auto-update is on, `tokex setup` also installs graphifyy and registers the graphify skill
+for your agent, then builds the map — so the assistant just reads it. See
+[Architecture](architecture) for details.
 
 Settings are written to your OS config dir — **not** the repo:
 
