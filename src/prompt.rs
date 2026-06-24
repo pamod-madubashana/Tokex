@@ -116,6 +116,122 @@ pub fn with_model(base: &LlmConfig, model: &str) -> LlmConfig {
     LlmConfig { url: base.url.clone(), key: base.key.clone(), model: model.to_string() }
 }
 
+/// A "show me the project/directory structure" request — answered deterministically as a tree, with
+/// no model call (it's a `tree`, not a question). ponytail: substring heuristic, not NLP.
+pub fn is_structure_request(task: &str) -> bool {
+    let t = task.to_ascii_lowercase();
+    (t.contains("structure") || t.contains("layout") || t.contains("tree"))
+        && (t.contains("project")
+            || t.contains("dir")
+            || t.contains("folder")
+            || t.contains("repo")
+            || t.contains("file")
+            || t.contains("codebase")
+            || t.contains("tree"))
+}
+
+/// Print the project structure as a tree — no LLM. Files come from `git ls-files` (so .gitignore is
+/// honored and node_modules/target never appear); outside a git repo, a shallow walk that skips the
+/// usual noise dirs. Depth/breadth limited so it's a structure overview, not a full file dump.
+pub fn project_tree(opts: &Options) -> Result<i32, String> {
+    let listing = capture("git ls-files --cached --others --exclude-standard", opts).unwrap_or_default();
+    let mut paths: Vec<String> =
+        listing.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect();
+    if paths.is_empty() {
+        paths = shallow_paths();
+    }
+    if paths.is_empty() {
+        return Err("nothing to show (empty or unreadable directory)".into());
+    }
+    print!("{}", render_tree(&paths));
+    Ok(0)
+}
+
+/// Run a read-only command through rtk and return its captured output (no viewport, no model).
+fn capture(cmd: &str, opts: &Options) -> Result<String, String> {
+    let exec = Options { raw: true, footer: false, llm_on_failure: false, ..*opts };
+    let mut buf: Vec<u8> = Vec::new();
+    orchestrate::run(&Intent::from_command(cmd), &mut buf, &mut std::io::sink(), None, &exec)?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Fallback file list when not in a git repo: walk the cwd a couple levels deep, skipping noise dirs.
+fn shallow_paths() -> Vec<String> {
+    const SKIP: &[&str] = &[".git", "node_modules", "target", "vendor", "dist", ".next", "build"];
+    fn walk(dir: &std::path::Path, rel: &str, depth: usize, out: &mut Vec<String>) {
+        if depth > TREE_DEPTH {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if SKIP.contains(&name.as_str()) {
+                continue;
+            }
+            let r = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+            if e.path().is_dir() {
+                walk(&e.path(), &r, depth + 1, out);
+            } else {
+                out.push(r);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(std::path::Path::new("."), "", 0, &mut out);
+    out
+}
+
+// Tree shape limits — enough to see the structure, not every file. ponytail: tunable knobs.
+const TREE_DEPTH: usize = 2;
+const TREE_BREADTH: usize = 60;
+
+#[derive(Default)]
+struct TreeNode {
+    children: std::collections::BTreeMap<String, TreeNode>,
+}
+
+/// Render file paths (forward-slash separated) as an ASCII tree, dirs before files, depth/breadth
+/// limited.
+fn render_tree(paths: &[String]) -> String {
+    let mut root = TreeNode::default();
+    for p in paths {
+        let mut cur = &mut root;
+        for part in p.split('/').filter(|s| !s.is_empty()) {
+            cur = cur.children.entry(part.to_string()).or_default();
+        }
+    }
+    let mut out = String::from(".\n");
+    render_node(&root, "", 0, &mut out);
+    out
+}
+
+fn render_node(node: &TreeNode, prefix: &str, depth: usize, out: &mut String) {
+    let mut entries: Vec<(&String, &TreeNode)> = node.children.iter().collect();
+    // Dirs (have children) first, then files; each alphabetical.
+    entries.sort_by_key(|(name, n)| (n.children.is_empty(), name.to_lowercase()));
+    let has_more = entries.len() > TREE_BREADTH;
+    let shown = entries.len().min(TREE_BREADTH);
+    for (idx, (name, child)) in entries.iter().take(shown).enumerate() {
+        let last = idx + 1 == shown && !has_more;
+        let connector = if last { "└── " } else { "├── " };
+        let is_dir = !child.children.is_empty();
+        out.push_str(&format!("{prefix}{connector}{name}{}\n", if is_dir { "/" } else { "" }));
+        if is_dir {
+            let ext = if last { "    " } else { "│   " };
+            if depth + 1 < TREE_DEPTH {
+                render_node(child, &format!("{prefix}{ext}"), depth + 1, out);
+            } else {
+                let n = child.children.len();
+                let unit = if n == 1 { "entry" } else { "entries" };
+                out.push_str(&format!("{prefix}{ext}└── … ({n} {unit})\n"));
+            }
+        }
+    }
+    if has_more {
+        out.push_str(&format!("{prefix}└── … ({} more)\n", entries.len() - TREE_BREADTH));
+    }
+}
+
 /// How a single bare argument should be handled.
 #[derive(Debug, PartialEq)]
 pub enum Dispatch {
@@ -309,25 +425,37 @@ fn exec_capture(cmd: &str, opts: &Options, mode: Mode) -> Result<(i32, String), 
 }
 
 /// Live tail of a running command. Captures every byte (returned to the caller) while redrawing the
-/// last `TAIL_ROWS` lines in place on stderr inside a ```bash fence, so a human sees output stream by
-/// without it scrolling the whole terminal. The viewport is erased when the command finishes, leaving
-/// only the synthesized answer. Off in Model mode or when stderr isn't a TTY (no cursor control).
-/// ponytail: fixed-height in-place redraw with relative cursor moves; fine unless it straddles a
-/// scroll region — good enough for a transient progress view.
+/// last `TAIL_ROWS` lines in place on stderr as a markdown ```bash block (rendered to ANSI, so it
+/// shows as a styled code box, not raw backticks), so a human watches output stream by without it
+/// scrolling the terminal. Erased when the command finishes, leaving only the synthesized answer.
+/// Off in Model mode or when stderr isn't a TTY (no cursor control).
+/// ponytail: track the rows we printed and clear-to-end before each repaint, so a variable-height
+/// render stays aligned; throttle repaints so a fast command doesn't flicker.
 const TAIL_ROWS: usize = 5;
+const REDRAW_INTERVAL: Duration = Duration::from_millis(70);
 
 struct TailView {
     full: Vec<u8>,
     pending: String,
     tail: VecDeque<String>,
+    rows: usize, // rows the last repaint printed (to move back up over them)
     shown: bool,
     live: bool,
+    last_draw: std::time::Instant,
 }
 
 impl TailView {
     fn new(mode: Mode) -> Self {
         let live = mode == Mode::User && std::io::stderr().is_terminal();
-        TailView { full: Vec::new(), pending: String::new(), tail: VecDeque::new(), shown: false, live }
+        TailView {
+            full: Vec::new(),
+            pending: String::new(),
+            tail: VecDeque::new(),
+            rows: 0,
+            shown: false,
+            live,
+            last_draw: std::time::Instant::now(),
+        }
     }
 
     fn push_line(&mut self, line: String) {
@@ -335,35 +463,49 @@ impl TailView {
             self.tail.pop_front();
         }
         self.tail.push_back(line);
-        self.redraw();
+        // Repaint on the first line for instant feedback, then at most every REDRAW_INTERVAL.
+        if !self.shown || self.last_draw.elapsed() >= REDRAW_INTERVAL {
+            self.redraw();
+        }
     }
 
-    /// Redraw the fixed 7-line block (open fence + 5 rows + close fence) in place.
+    /// Render the current tail as an ANSI ```bash block and repaint it in place.
     fn redraw(&mut self) {
         let mut err = std::io::stderr();
-        let w = term_width().saturating_sub(1);
         if self.shown {
-            let _ = write!(err, "\r\x1b[{}A", TAIL_ROWS + 1); // back up to the open fence
+            let _ = write!(err, "\r\x1b[{}A\x1b[J", self.rows); // up over the last paint, clear down
         }
-        let _ = writeln!(err, "\x1b[K```bash");
-        for i in 0..TAIL_ROWS {
-            let line = self.tail.get(i).map(String::as_str).unwrap_or("");
-            let _ = writeln!(err, "\x1b[K{}", clip(line, w));
-        }
-        let _ = write!(err, "\x1b[K```");
+        let block = render_block(&self.tail);
+        let _ = write!(err, "{block}");
         let _ = err.flush();
+        self.rows = block.matches('\n').count();
         self.shown = true;
+        self.last_draw = std::time::Instant::now();
     }
 
     /// Return the full captured output, erasing the viewport first so the final answer stays clean.
     fn finish(self) -> Vec<u8> {
         if self.live && self.shown {
             let mut err = std::io::stderr();
-            let _ = write!(err, "\r\x1b[{}A\x1b[J", TAIL_ROWS + 1); // up to the fence, clear downward
+            let _ = write!(err, "\r\x1b[{}A\x1b[J", self.rows); // up over the last paint, clear down
             let _ = err.flush();
         }
         self.full
     }
+}
+
+/// Build the ANSI-rendered ```bash block for the tail (oldest→newest, padded to `TAIL_ROWS`), with no
+/// trailing newline so the caller can count rows by counting `\n`.
+fn render_block(tail: &VecDeque<String>) -> String {
+    let w = term_width().saturating_sub(1);
+    let mut md = String::from("```bash\n");
+    for i in 0..TAIL_ROWS {
+        md.push_str(&clip(tail.get(i).map(String::as_str).unwrap_or(""), w));
+        md.push('\n');
+    }
+    md.push_str("```");
+    let opts = markdown_to_ansi::Options { syntax_highlight: true, width: Some(w + 1), code_bg: true };
+    markdown_to_ansi::render(&md, &opts).trim_end_matches('\n').to_string()
 }
 
 impl Write for TailView {
@@ -682,6 +824,33 @@ mod tests {
         assert!(header("plan-stack").is_some());
         assert!(header("theme").is_some());
         assert!(header("nope").is_none());
+    }
+
+    #[test]
+    fn structure_requests_detected() {
+        assert!(is_structure_request("give me current project structure"));
+        assert!(is_structure_request("show the directory tree"));
+        assert!(is_structure_request("what's the folder layout"));
+        assert!(!is_structure_request("what does the ? operator do"));
+        assert!(!is_structure_request("list rust crates"));
+    }
+
+    #[test]
+    fn render_tree_groups_dirs_first_and_limits_depth() {
+        let paths = vec![
+            "Cargo.toml".to_string(),
+            "src/main.rs".to_string(),
+            "src/prompt.rs".to_string(),
+            "docs/docs/usage.md".to_string(),
+        ];
+        let t = render_tree(&paths);
+        assert!(t.contains("src/"), "{t}");
+        assert!(t.contains("main.rs"), "{t}");
+        assert!(t.contains("Cargo.toml"), "{t}");
+        // docs/docs is at the depth limit, so its file is collapsed, not listed.
+        assert!(!t.contains("usage.md"), "{t}");
+        // Dir before file at the root: src/ (dir) precedes Cargo.toml (file).
+        assert!(t.find("src/").unwrap() < t.find("Cargo.toml").unwrap(), "{t}");
     }
 
     #[test]
