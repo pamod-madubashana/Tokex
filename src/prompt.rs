@@ -6,8 +6,9 @@
 //! category's header — those aren't runnable commands.
 //!
 //! Two presentation modes:
-//! - **User** (`tokex "…"`): a spinner while waiting, then the model's text streamed live to stderr.
-//! - **Model** (`tokex -m "…"`): no spinner, no thinking — just the output on stdout.
+//! - **User** (`tokex "…"`): a spinner while the model thinks; between commands it narrates each
+//!   step ("Let me check…") in its own words, streams the running command's output, then the answer.
+//! - **Model** (`tokex -m "…"`): no spinner, no narration — just the output on stdout.
 //!
 //! Every call is streamed; the LLM key comes from config.
 
@@ -58,12 +59,21 @@ FIRST decide whether answering even needs the machine. Each turn, reply with EXA
 needed: a greeting, small talk, a general or coding question, or anything you already know. Do NOT \
 run a command just to have run one. SYNTHESIZE; never paste raw command output. Wrap any file \
 tree/table/aligned layout in a fenced ``` code block.\n\
-- {\"run\":\"<command>\"} — ONLY when the request genuinely depends on this machine's state (inspect \
-files, dirs, git, build) and you don't already have the info. One command; inspect ONE level at a \
-time, skip vendored/build dirs (vendor, target, node_modules, .git, dist), never dump the whole \
-recursive tree.\n\
-Prefer answering — run a command only when truly required, with the fewest that do the job. Always \
-finish with an {\"answer\"}. Output ONLY the JSON.";
+- {\"run\":\"<command>\",\"say\":\"<one line>\"} — ONLY when the request genuinely depends on this \
+machine's state (inspect files, dirs, git, build) and you don't already have the info. `say` is one \
+short first-person line telling the user what you're doing or what you just learned, like a person \
+thinking aloud: \"Let me search for the role handlers.\", \"Not there — let me check main.rs.\", \
+\"Found them.\" One command; inspect ONE level at a time, skip vendored/build dirs (vendor, target, \
+node_modules, .git, dist), never dump the whole recursive tree.\n\
+Prefer answering — run a command only when truly required, with the fewest that do the job. When you \
+find what was asked, cite the concrete location (path:line). Always finish with an {\"answer\"}. \
+Output ONLY the JSON.\n\
+Examples:\n\
+Request: hi → {\"answer\":\"Hi! What would you like to do in this project?\"}\n\
+Request: what does the ? operator do in Rust → {\"answer\":\"It propagates errors: on Err it returns \
+early, on Ok it unwraps.\"}\n\
+Request: where are user roles implemented → {\"run\":\"Select-String -Path src\\\\*.rs -Pattern \
+role\",\"say\":\"Let me search the source for role handling.\"}";
 
 
 /// The header (system prompt) bound to a category, if it is known.
@@ -203,18 +213,24 @@ git); never PowerShell or cmd syntax."
     // Step loop: the model runs commands to gather info (each output fed back, capped), then
     // finishes with an ANALYZED answer — never a raw command dump. A failure is fed back to fix.
     let mut transcript = String::new();
+    let mut seen: Vec<String> = Vec::new();
     for _ in 0..MAX_STEPS {
         let user = if transcript.is_empty() {
             task.to_string()
         } else {
             format!("Request: {task}\n\nCommands run so far:\n{transcript}\nGather more if needed, else answer.")
         };
-        match parse_decision(&one_call(cfg, &system, &user, mode)?) {
+        match parse_decision(&one_call(cfg, &system, &user, mode, false)?) {
             Decision::Answer(text) => {
                 print_answer(&text, mode);
                 return Ok(0);
             }
-            Decision::Run(cmd) => {
+            // A weak model loops, re-running a command it already ran. That yields no new info, so
+            // break to the forced answer instead of spinning.
+            Decision::Run { cmd, .. } if seen.contains(&cmd) => break,
+            Decision::Run { say, cmd } => {
+                say_step(say.as_deref(), mode); // the model's own "let me check…" narration
+                seen.push(cmd.clone());
                 if is_risky(&cmd) {
                     if !confirm(&cmd) {
                         let _ = writeln!(std::io::stderr(), "aborted (not confirmed).");
@@ -232,10 +248,18 @@ git); never PowerShell or cmd syntax."
     let user = format!(
         "Request: {task}\n\nCommands run so far:\n{transcript}\nGive your final answer now as {{\"answer\":\"...\"}}."
     );
-    if let Decision::Answer(text) = parse_decision(&one_call(cfg, &system, &user, mode)?) {
+    if let Decision::Answer(text) = parse_decision(&one_call(cfg, &system, &user, mode, false)?) {
         print_answer(&text, mode);
     }
     Ok(0)
+}
+
+/// Show the model's one-line narration of a step ("Let me check the routes.") to a human, in User
+/// mode only — dimmed so it reads as the agent talking, distinct from command output.
+fn say_step(say: Option<&str>, mode: Mode) {
+    if let (Mode::User, Some(s)) = (mode, say) {
+        let _ = writeln!(std::io::stderr(), "\x1b[2m{s}\x1b[0m");
+    }
 }
 
 // Max commands the model may run to gather info before it must give a final answer.
@@ -260,13 +284,15 @@ fn print_answer(text: &str, mode: Mode) {
 }
 
 enum Decision {
-    /// Run a command to gather info (the loop always continues and feeds the output back).
-    Run(String),
+    /// Run a command to gather info (the loop continues and feeds the output back). `say` is the
+    /// model's own one-line narration of what it's about to do, shown to a human before the command.
+    Run { say: Option<String>, cmd: String },
     Answer(String),
 }
 
 /// Read the model's JSON decision: `{"run":…}` → gather via a command, `{"answer":…}` → final text.
-/// Anything that isn't our JSON is treated as a plain answer (graceful when a model strays).
+/// An optional `say` narrates the step. Anything that isn't our JSON is treated as a plain answer
+/// (graceful when a model strays).
 fn parse_decision(content: &str) -> Decision {
     // The model is told to emit ONE JSON object, but a weak one sometimes emits several (or trailing
     // prose). Parse the FIRST complete object from the first `{` — a span of first-`{`..last-`}`
@@ -274,9 +300,11 @@ fn parse_decision(content: &str) -> Decision {
     if let Some(a) = content.find('{') {
         let mut objs = serde_json::Deserializer::from_str(&content[a..]).into_iter::<serde_json::Value>();
         if let Some(Ok(v)) = objs.next() {
+            let say = v.get("say").and_then(|x| x.as_str()).map(str::trim)
+                .filter(|s| !s.is_empty()).map(String::from);
             if let Some(cmd) = v.get("run").and_then(|x| x.as_str()) {
                 if !cmd.trim().is_empty() {
-                    return Decision::Run(cmd.trim().to_string());
+                    return Decision::Run { say, cmd: cmd.trim().to_string() };
                 }
             }
             if let Some(ans) = v.get("answer").and_then(|x| x.as_str()) {
@@ -501,7 +529,7 @@ fn trunc(s: &str, max: usize) -> String {
     }
 }
 
-fn one_call(cfg: &LlmConfig, system: &str, user: &str, mode: Mode) -> Result<String, String> {
+fn one_call(cfg: &LlmConfig, system: &str, user: &str, mode: Mode, live: bool) -> Result<String, String> {
     let body = serde_json::json!({
         "model": cfg.model,
         "temperature": 0.2,
@@ -512,23 +540,22 @@ fn one_call(cfg: &LlmConfig, system: &str, user: &str, mode: Mode) -> Result<Str
         ],
     });
     // Start the spinner BEFORE the request: a model can hold the connection for seconds (connecting +
-    // thinking server-side) before the first byte. It stands down only while thinking streams.
-    let spinner = (mode == Mode::User).then(|| Spinner::start("waiting"));
+    // thinking server-side) before the first byte.
+    let spinner = (mode == Mode::User).then(|| Spinner::start("thinking"));
     let resp = ureq::post(&cfg.url)
         .set("Authorization", &format!("Bearer {}", cfg.key))
         .set("Content-Type", "application/json")
         .send_json(body)
         .map_err(|e| format!("request failed: {e}"))?;
-    stream(resp, mode, spinner)
+    stream(resp, live, spinner)
 }
 
-/// Read an OpenAI-compatible SSE stream and accumulate the answer `content`. In User mode every
-/// model token streams live to stderr as progress — `reasoning_content` for models that think, and
-/// the `content` itself for instruct models (the assistant) that emit no separate thinking, so the
-/// user always sees the model working instead of a bare spinner. The spinner only covers the wait
-/// before the first token. `content` is still accumulated and returned so the caller can print a
-/// clean result to stdout. In Model mode nothing streams. stdout is untouched.
-fn stream(resp: ureq::Response, mode: Mode, mut spinner: Option<Spinner>) -> Result<String, String> {
+/// Read an OpenAI-compatible SSE stream and accumulate the answer `content`. When `live`, tokens
+/// stream to stderr as they arrive (`reasoning_content` then `content`) and stand the spinner down;
+/// otherwise the spinner covers the whole call and nothing is shown — used for the decision turns,
+/// whose raw `{"run":…}` JSON should never reach the user (the model's `say` narrates instead).
+/// `content` is always accumulated and returned. stdout is untouched.
+fn stream(resp: ureq::Response, live: bool, mut spinner: Option<Spinner>) -> Result<String, String> {
     let mut err = std::io::stderr();
     let reader = BufReader::new(resp.into_reader());
     let mut content = String::new();
@@ -548,7 +575,7 @@ fn stream(resp: ureq::Response, mode: Mode, mut spinner: Option<Spinner>) -> Res
         };
         let delta = &v["choices"][0]["delta"];
         let reasoning = delta["reasoning_content"].as_str().unwrap_or("");
-        if mode == Mode::User && !reasoning.is_empty() {
+        if live && !reasoning.is_empty() {
             spinner.take();
             shown = true;
             let _ = write!(err, "{reasoning}");
@@ -556,7 +583,7 @@ fn stream(resp: ureq::Response, mode: Mode, mut spinner: Option<Spinner>) -> Res
         }
         if let Some(t) = delta["content"].as_str() {
             if !t.is_empty() {
-                if mode == Mode::User {
+                if live {
                     spinner.take(); // model is producing output — stand the spinner down
                     shown = true;
                     let _ = write!(err, "{t}");
@@ -671,8 +698,11 @@ mod tests {
 
     #[test]
     fn parse_decision_run_answer_and_fallback() {
-        match parse_decision(r#"{"run":"find . -name Cargo.toml | wc -l"}"#) {
-            Decision::Run(cmd) => assert_eq!(cmd, "find . -name Cargo.toml | wc -l"),
+        match parse_decision(r#"{"run":"find . -name Cargo.toml | wc -l","say":"counting crates"}"#) {
+            Decision::Run { cmd, say } => {
+                assert_eq!(cmd, "find . -name Cargo.toml | wc -l");
+                assert_eq!(say.as_deref(), Some("counting crates"));
+            }
             _ => panic!("expected Run"),
         }
         match parse_decision(r#"here you go: {"answer":"the ? operator propagates errors"}"#) {
@@ -686,7 +716,7 @@ mod tests {
         }
         // A weak model emitting two objects: take the FIRST, don't dump both as raw text.
         match parse_decision("{\"run\":\"ls -a\"}\n{\"run\":\"ls -b\"}") {
-            Decision::Run(cmd) => assert_eq!(cmd, "ls -a"),
+            Decision::Run { cmd, .. } => assert_eq!(cmd, "ls -a"),
             _ => panic!("expected first Run"),
         }
     }
