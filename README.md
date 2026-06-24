@@ -133,11 +133,16 @@ tokex "what does the ? operator do?"                    # → answers (rendered 
 tokex "plan-stack: build a music player app"            # category → structured answer
 ```
 
-Two modes. `tokex "…"` is for **you**: a spinner while waiting, the model's thinking streamed to
-stderr, a running command's last 5 output lines shown live in a ```bash viewport, and answers
-rendered as ANSI markdown (syntax-highlighted code). `tokex -m "…"` is for **another agent**: no
-spinner, no thinking, no viewport, raw text — just the output on stdout. A risky command's
-confirmation reads stdin (`printf 'y\n' | tokex -m "…"`); no input safely aborts.
+Two modes. `tokex "…"` is for **you**: a spinner while waiting, then the model's output streamed live
+to stderr (thinking for reasoning models, the answer text for instruct models), a running command's
+last 5 output lines shown live in a ```bash viewport, and answers rendered as ANSI markdown
+(syntax-highlighted code). `tokex -m "…"` is for **another agent**: no spinner, no stream, no
+viewport, raw text — just the output on stdout. A risky command's confirmation reads stdin
+(`printf 'y\n' | tokex -m "…"`); no input safely aborts.
+
+A **project-structure** ask (`"give me the project structure"`, `"show the directory tree"`) is
+answered directly as a depth-limited tree from `git ls-files` — honors `.gitignore`, no model, no API
+key needed.
 
 ```text
 $ tokex "list all rust projects in the current dir"

@@ -244,6 +244,18 @@ fn is_passthrough(first: &str) -> bool {
 fn dispatch_one(arg: &str, mode: prompt::Mode) {
     match prompt::classify(arg) {
         prompt::Dispatch::Command(cmd) => run_intent(Intent::from_command(cmd)),
+        // A "project structure" ask is a tree, not a question — answer it deterministically (no LLM,
+        // honors .gitignore) instead of letting a weak model recurse into node_modules.
+        prompt::Dispatch::Prompt(task) if prompt::is_structure_request(&task) => {
+            let cfg = config::load();
+            match prompt::project_tree(&exec_opts(&cfg)) {
+                Ok(code) => exit(code),
+                Err(e) => {
+                    eprintln!("tokex: {e}");
+                    exit(1);
+                }
+            }
+        }
         // No role given → default to the `assistant` role.
         prompt::Dispatch::Prompt(task) => run_role("assistant", &task, mode),
         prompt::Dispatch::Json(s) => match prompt::parse_json(&s) {

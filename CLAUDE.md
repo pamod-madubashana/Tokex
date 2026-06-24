@@ -59,7 +59,7 @@ Keep these separated by file descriptor — never mix human text into stdout.
 `main.rs` is dispatch only. With a first arg that isn't a subcommand: several args = a command
 (`tokex git status`), a single (quoted) arg = a prompt (`tokex "list rust projects"`, see
 `prompt.rs`). `tokex -m "…"` is the same prompt in **Model mode** (output only, for agents) vs the
-default **User mode** (spinner + live-streamed thinking, for humans). Otherwise a subcommand
+default **User mode** (spinner + live-streamed model output, for humans). Otherwise a subcommand
 (`run`/`script`/`setup`/`mcp`/…) or, with no subcommand and piped stdin, a JSON intent.
 
 **Front-ends share the core.** CLI, stdin-JSON, and the MCP server (`mcp.rs`, `tokex mcp`) all funnel
@@ -153,9 +153,15 @@ just waits. The `ROLES` table binds each role to `(model id, header)` — `plann
 Same endpoint + key as the configured LLM, role's model id swapped in. A role wins dispatch when
 it's the first arg.
 
-Two modes (`prompt::Mode`): **User** (default) shows a stderr spinner until the first token then
-streams the model's thinking live; **Model** (`tokex -m "…"`, for agents) shows neither — just the
-output on stdout (task exec runs with `footer:false`, human channel suppressed).
+Two modes (`prompt::Mode`): **User** (default) shows a stderr spinner until the first token, then
+streams the model's output live (thinking for reasoning models, the answer text itself for instruct
+models like the assistant); **Model** (`tokex -m "…"`, for agents) shows neither — just the output on
+stdout (task exec runs with `footer:false`, human channel suppressed).
+
+A **project-structure** request (`is_structure_request`: "structure"/"tree"/"layout" + a
+directory-ish noun) short-circuits the model entirely — `project_tree` renders a depth-limited tree
+from `git ls-files` (honors `.gitignore`, leaves submodules unexpanded; a noise-skipping shallow walk
+outside a git repo). It's a `tree`, not a question, so it needs no LLM key.
 
 ## Scripting (`script.rs`)
 

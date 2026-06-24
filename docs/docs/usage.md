@@ -68,10 +68,14 @@ tokex "what does the ? operator do?"                  # → answers (rendered ma
 tokex "plan-stack: build a music player app"          # category → structured answer
 ```
 
-Two modes: `tokex "…"` (User) shows a spinner, streams thinking to stderr, shows a running command's
-last 5 output lines live in a ```bash viewport, and renders answers as ANSI markdown; `tokex -m "…"`
-(Model, for agents) shows none of that — just raw output on stdout. A risky command's confirmation
-reads stdin, and no input aborts. Add a category by adding a row to `CATEGORIES` in `prompt.rs`.
+Two modes: `tokex "…"` (User) shows a spinner, streams the model's output live to stderr (thinking,
+or the answer text for instruct models), shows a running command's last 5 output lines live in a
+```bash viewport, and renders answers as ANSI markdown; `tokex -m "…"` (Model, for agents) shows none
+of that — just raw output on stdout. A risky command's confirmation reads stdin, and no input aborts.
+Add a category by adding a row to `CATEGORIES` in `prompt.rs`.
+
+A **project-structure** ask (`"give me the project structure"`, `"show the directory tree"`) is
+answered directly as a depth-limited tree from `git ls-files` — honors `.gitignore`, no model needed.
 
 ## Roles (offload to a role-specific model)
 
