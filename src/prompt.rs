@@ -63,7 +63,12 @@ files, dirs, git, build) and you don't already have the info. One command; inspe
 time, skip vendored/build dirs (vendor, target, node_modules, .git, dist), never dump the whole \
 recursive tree.\n\
 Prefer answering — run a command only when truly required, with the fewest that do the job. Always \
-finish with an {\"answer\"}. Output ONLY the JSON.";
+finish with an {\"answer\"}. Output ONLY the JSON.\n\
+Examples:\n\
+Request: hi → {\"answer\":\"Hi! What would you like to do in this project?\"}\n\
+Request: what does the ? operator do in Rust → {\"answer\":\"It propagates errors: on Err it returns \
+early, on Ok it unwraps.\"}\n\
+Request: how many rust files are here → {\"run\":\"Get-ChildItem -Recurse -Filter *.rs | Measure-Object\"}";
 
 
 /// The header (system prompt) bound to a category, if it is known.
@@ -203,6 +208,7 @@ git); never PowerShell or cmd syntax."
     // Step loop: the model runs commands to gather info (each output fed back, capped), then
     // finishes with an ANALYZED answer — never a raw command dump. A failure is fed back to fix.
     let mut transcript = String::new();
+    let mut seen: Vec<String> = Vec::new();
     for _ in 0..MAX_STEPS {
         let user = if transcript.is_empty() {
             task.to_string()
@@ -214,7 +220,11 @@ git); never PowerShell or cmd syntax."
                 print_answer(&text, mode);
                 return Ok(0);
             }
+            // A weak model loops, re-running a command it already ran. That yields no new info, so
+            // break to the forced answer instead of spinning.
+            Decision::Run(cmd) if seen.contains(&cmd) => break,
             Decision::Run(cmd) => {
+                seen.push(cmd.clone());
                 if is_risky(&cmd) {
                     if !confirm(&cmd) {
                         let _ = writeln!(std::io::stderr(), "aborted (not confirmed).");
