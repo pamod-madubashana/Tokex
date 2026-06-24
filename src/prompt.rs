@@ -557,7 +557,23 @@ fn one_call(cfg: &LlmConfig, system: &str, user: &str, mode: Mode, live: bool) -
     // Start the spinner BEFORE the request: a model can hold the connection for seconds (connecting +
     // thinking server-side) before the first byte. With live=false it spins for the whole call, so
     // the user always sees progress during the wait instead of a frozen prompt.
-    let spinner = (mode == Mode::User).then(|| Spinner::start("waiting for model"));
+    let phrases = [
+        "cooking",
+        "brewing",
+        "pondering",
+        "crunching",
+        "consulting the oracle",
+        "sparking neurons",
+        "weaving words",
+    ];
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let random_index = (nanos % phrases.len() as u128) as usize;
+    let label = phrases[random_index];
+
+    let spinner = (mode == Mode::User).then(|| Spinner::start(label));
     let resp = ureq::post(&cfg.url)
         .set("Authorization", &format!("Bearer {}", cfg.key))
         .set("Content-Type", "application/json")
@@ -616,31 +632,51 @@ fn stream(resp: ureq::Response, live: bool, mut spinner: Option<Spinner>) -> Res
     Ok(content)
 }
 
-/// A tiny stderr spinner that animates until dropped. ponytail: ASCII frames (render everywhere,
-/// incl. cmd.exe) + an atomic stop flag; cleared by overwriting with spaces, not an ANSI escape.
+/// A tiny stderr spinner that animates until dropped. Braille frames + even frame pacing make the
+/// spin smooth; the glyph is tinted to match the agent's narration. ponytail: stdlib `\r`+flush, no
+/// crossterm — a one-line redraw needs no alternate screen or raw mode (those would wipe the
+/// inline-streamed output). Braille assumes a modern terminal; fine on Windows Terminal.
 struct Spinner {
     stop: Arc<AtomicBool>,
     handle: Option<thread::JoinHandle<()>>,
 }
+
+// Classic braille dots and the per-frame budget. Pacing keeps frames evenly spaced (crossterm's idea)
+// regardless of how long a write takes.
+const SPIN_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPIN_FRAME: Duration = Duration::from_millis(80);
 
 impl Spinner {
     fn start(label: &str) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let label = label.to_string();
+        
         let handle = thread::spawn(move || {
-            let frames = ['|', '/', '-', '\\'];
             let mut err = std::io::stderr();
+            
+            // 1. HIDE THE CURSOR before the animation starts loop
+            let _ = write!(err, "\x1b[?25l");
+            let _ = err.flush();
+            
             let mut i = 0;
             while !flag.load(Ordering::Relaxed) {
-                let _ = write!(err, "\r{} {label}...", frames[i % frames.len()]);
+                let start = std::time::Instant::now();
+                
+                let _ = write!(err, "\r{SAY_COLOR}{}\x1b[0m {label}...", SPIN_FRAMES[i % SPIN_FRAMES.len()]);
                 let _ = err.flush();
                 i += 1;
-                thread::sleep(Duration::from_millis(100));
+                
+                while !flag.load(Ordering::Relaxed) && start.elapsed() < SPIN_FRAME {
+                    thread::sleep(Duration::from_millis(10));
+                }
             }
-            let _ = write!(err, "\r{}\r", " ".repeat(label.len() + 6)); // clear the line
+            
+            // 2. CLEANUP: Clear the line AND SHOW THE CURSOR again (\x1b[?25h)
+            let _ = write!(err, "\r\x1b[K\x1b[?25h"); 
             let _ = err.flush();
         });
+        
         Spinner { stop, handle: Some(handle) }
     }
 }
