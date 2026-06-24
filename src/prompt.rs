@@ -67,6 +67,9 @@ you're doing or what you just learned, like a person thinking aloud: \"Let me bu
 \"Not there — let me check main.rs.\", \"Found them.\" One command; when inspecting, go ONE level at \
 a time, skip vendored/build dirs (vendor, target, node_modules, .git, dist), never dump the whole \
 recursive tree.\n\
+When getting to know a project, FIRST find what's ignored — read its .gitignore (or just use `git \
+ls-files`, which already honors it) — and never list or recurse into ignored paths (node_modules, \
+target, dist, build artifacts). A raw recursive listing that walks ignored dirs is wrong.\n\
 Answer directly for greetings and general/coding questions; RUN commands to inspect the project or \
 to do what the user asked — don't refuse or ask permission for a normal dev command. Use the fewest \
 that do the job, and cite the concrete location (path:line) when you find what was asked. Always \
@@ -77,6 +80,8 @@ Request: what does the ? operator do in Rust → {\"answer\":\"It propagates err
 early, on Ok it unwraps.\"}\n\
 Request: build this project in release → {\"run\":\"cargo build --release\",\"say\":\"Building it in \
 release mode.\"}\n\
+Request: what is this project → {\"run\":\"git ls-files\",\"say\":\"Let me list the tracked files to \
+see what this is.\"}\n\
 Request: where are user roles implemented → {\"run\":\"Select-String -Path src\\\\*.rs -Pattern \
 role\",\"say\":\"Let me search the source for role handling.\"}";
 
@@ -260,12 +265,15 @@ git); never PowerShell or cmd syntax."
 }
 
 /// Show the model's one-line narration of a step ("Let me check the routes.") to a human, in User
-/// mode only — dimmed so it reads as the agent talking, distinct from command output.
+/// mode only — a light color so it reads as the agent talking, distinct from command output.
 fn say_step(say: Option<&str>, mode: Mode) {
     if let (Mode::User, Some(s)) = (mode, say) {
-        let _ = writeln!(std::io::stderr(), "\x1b[2m{s}\x1b[0m");
+        let _ = writeln!(std::io::stderr(), "{SAY_COLOR}{s}\x1b[0m");
     }
 }
+
+/// Light steel-blue for the agent's narration — clearly lighter than the dim it replaced.
+const SAY_COLOR: &str = "\x1b[38;5;153m";
 
 // Max commands the model may run to gather info before it must give a final answer.
 const MAX_STEPS: usize = 6;
@@ -420,8 +428,11 @@ impl TailView {
 
 /// Build the ANSI-rendered ```bash block for the tail (oldest→newest, padded to `TAIL_ROWS`), with no
 /// trailing newline so the caller can count rows by counting `\n`.
+// Columns left blank on the right of the output box, so it doesn't run to the terminal edge.
+const RIGHT_MARGIN: usize = 4;
+
 fn render_block(tail: &VecDeque<String>) -> String {
-    let w = term_width().saturating_sub(1);
+    let w = term_width().saturating_sub(1 + RIGHT_MARGIN);
     let mut md = String::from("```bash\n");
     for i in 0..TAIL_ROWS {
         md.push_str(&clip(tail.get(i).map(String::as_str).unwrap_or(""), w));
