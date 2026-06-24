@@ -271,17 +271,19 @@ enum Decision {
 /// Read the model's JSON decision: `{"run":…}` → gather via a command, `{"answer":…}` → final text.
 /// Anything that isn't our JSON is treated as a plain answer (graceful when a model strays).
 fn parse_decision(content: &str) -> Decision {
-    if let (Some(a), Some(b)) = (content.find('{'), content.rfind('}')) {
-        if a < b {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content[a..=b]) {
-                if let Some(cmd) = v.get("run").and_then(|x| x.as_str()) {
-                    if !cmd.trim().is_empty() {
-                        return Decision::Run(cmd.trim().to_string());
-                    }
+    // The model is told to emit ONE JSON object, but a weak one sometimes emits several (or trailing
+    // prose). Parse the FIRST complete object from the first `{` — a span of first-`{`..last-`}`
+    // would glue multiple objects into invalid JSON and lose the decision entirely.
+    if let Some(a) = content.find('{') {
+        let mut objs = serde_json::Deserializer::from_str(&content[a..]).into_iter::<serde_json::Value>();
+        if let Some(Ok(v)) = objs.next() {
+            if let Some(cmd) = v.get("run").and_then(|x| x.as_str()) {
+                if !cmd.trim().is_empty() {
+                    return Decision::Run(cmd.trim().to_string());
                 }
-                if let Some(ans) = v.get("answer").and_then(|x| x.as_str()) {
-                    return Decision::Answer(ans.trim().to_string());
-                }
+            }
+            if let Some(ans) = v.get("answer").and_then(|x| x.as_str()) {
+                return Decision::Answer(ans.trim().to_string());
             }
         }
     }
@@ -684,6 +686,11 @@ mod tests {
         match parse_decision("just some prose, no json") {
             Decision::Answer(a) => assert_eq!(a, "just some prose, no json"),
             _ => panic!("expected Answer fallback"),
+        }
+        // A weak model emitting two objects: take the FIRST, don't dump both as raw text.
+        match parse_decision("{\"run\":\"ls -a\"}\n{\"run\":\"ls -b\"}") {
+            Decision::Run(cmd) => assert_eq!(cmd, "ls -a"),
+            _ => panic!("expected first Run"),
         }
     }
 
