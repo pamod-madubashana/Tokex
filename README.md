@@ -121,11 +121,11 @@ The agent can read just that insight instead of the full log. Needs an API key (
 `--llm`, no key is read and no request is made.
 
 **Prompts (a single quoted arg).** Several unquoted args are a command (`tokex git status`); a
-single quoted string is a prompt. **For a task, the model decides: run a shell command (and you get
-the real output) or answer.** A safe read-only command runs unprompted; a risky one (delete,
-overwrite, install, push, network, sudo…) asks first. If a command fails, the model reads the error
-and fixes it (up to twice) or answers from it. `category: text` (or a JSON object) returns a
-structured answer instead.
+single quoted string is a prompt. **For a task, the model gathers with shell commands and then
+SYNTHESIZES an answer** — it inspects step by step, never dumps a raw command log. A safe read-only
+command runs unprompted; a risky one (delete, overwrite, install, push, network, sudo…) asks first.
+If a command fails, the model reads the error and fixes it or answers from it. `category: text` (or a
+JSON object) returns a structured answer instead.
 
 ```bash
 tokex "list all rust projects in the current dir"       # → runs `find … | sed …`, prints the list
@@ -134,8 +134,9 @@ tokex "plan-stack: build a music player app"            # category → structure
 ```
 
 Two modes. `tokex "…"` is for **you**: a spinner while waiting, the model's thinking streamed to
-stderr, and answers rendered as ANSI markdown (syntax-highlighted code). `tokex -m "…"` is for
-**another agent**: no spinner, no thinking, raw text — just the output on stdout. A risky command's
+stderr, a running command's last 5 output lines shown live in a ```bash viewport, and answers
+rendered as ANSI markdown (syntax-highlighted code). `tokex -m "…"` is for **another agent**: no
+spinner, no thinking, no viewport, raw text — just the output on stdout. A risky command's
 confirmation reads stdin (`printf 'y\n' | tokex -m "…"`); no input safely aborts.
 
 ```text

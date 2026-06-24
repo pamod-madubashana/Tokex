@@ -55,11 +55,12 @@ the exit code. Requires a key from [Setup](setup).
 
 ## Prompts & categories
 
-A single quoted arg is a *prompt*, not a command. **For a task, the model decides: run a shell
-command (you get the real output) or answer.** A safe read-only command runs unprompted; a risky one
-(delete, overwrite, install, push, network, sudo…) asks first. If a command fails, the model reads
-the error and fixes it (up to twice) or answers from it. `category: text` (or a JSON object) returns
-a structured answer instead. Requires a key from [Setup](setup).
+A single quoted arg is a *prompt*, not a command. **For a task, the model gathers with shell commands
+and then SYNTHESIZES an answer** — it inspects step by step, never dumps a raw command log. A safe
+read-only command runs unprompted; a risky one (delete, overwrite, install, push, network, sudo…)
+asks first. If a command fails, the model reads the error and fixes it or answers from it.
+`category: text` (or a JSON object) returns a structured answer instead. Requires a key from
+[Setup](setup).
 
 ```bash
 tokex "list all rust projects in the current dir"     # → runs a command, prints the list
@@ -67,10 +68,10 @@ tokex "what does the ? operator do?"                  # → answers (rendered ma
 tokex "plan-stack: build a music player app"          # category → structured answer
 ```
 
-Two modes: `tokex "…"` (User) shows a spinner, streams thinking to stderr, and renders answers as
-ANSI markdown; `tokex -m "…"` (Model, for agents) shows neither — just raw output on stdout. A risky
-command's confirmation reads stdin, and no input aborts. Add a category by adding a row to
-`CATEGORIES` in `prompt.rs`.
+Two modes: `tokex "…"` (User) shows a spinner, streams thinking to stderr, shows a running command's
+last 5 output lines live in a ```bash viewport, and renders answers as ANSI markdown; `tokex -m "…"`
+(Model, for agents) shows none of that — just raw output on stdout. A risky command's confirmation
+reads stdin, and no input aborts. Add a category by adding a row to `CATEGORIES` in `prompt.rs`.
 
 ## Roles (offload to a role-specific model)
 
