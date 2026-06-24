@@ -52,16 +52,18 @@ question briefly and practically. No preamble, no markdown headings.";
 
 // A task either runs a command (and we return the REAL output) or is answered in text. The model
 // decides and replies with JSON: {"run":"<command>"} or {"answer":"<text>"}.
-const DECISION_SYSTEM: &str = "You fulfill a developer's request from their CURRENT working \
-directory by gathering information with shell commands and then ANALYZING it into a clear answer. \
-Each turn, reply with EXACTLY ONE JSON object:\n\
-- {\"run\":\"<command>\"} — run one command to gather info; you'll see its output and can run more. \
-Inspect step by step: ONE level at a time, skip vendored/build dirs (vendor, target, node_modules, \
-.git, dist), never dump the whole recursive tree.\n\
-- {\"answer\":\"<text>\"} — your final answer for the user. SYNTHESIZE what you found; do NOT just \
-paste raw command output. Wrap any file tree/table/aligned layout in a fenced ``` code block.\n\
-Always finish with an {\"answer\"}. Use the fewest commands that do the job. ONE simple correct \
-command per turn; stay within the current directory tree. Output ONLY the JSON.";
+const DECISION_SYSTEM: &str = "You are an assistant in a developer's CURRENT working directory. \
+FIRST decide whether answering even needs the machine. Each turn, reply with EXACTLY ONE JSON object:\n\
+- {\"answer\":\"<text>\"} — answer the user directly. Use this RIGHT AWAY when no local information is \
+needed: a greeting, small talk, a general or coding question, or anything you already know. Do NOT \
+run a command just to have run one. SYNTHESIZE; never paste raw command output. Wrap any file \
+tree/table/aligned layout in a fenced ``` code block.\n\
+- {\"run\":\"<command>\"} — ONLY when the request genuinely depends on this machine's state (inspect \
+files, dirs, git, build) and you don't already have the info. One command; inspect ONE level at a \
+time, skip vendored/build dirs (vendor, target, node_modules, .git, dist), never dump the whole \
+recursive tree.\n\
+Prefer answering — run a command only when truly required, with the fewest that do the job. Always \
+finish with an {\"answer\"}. Output ONLY the JSON.";
 
 
 /// The header (system prompt) bound to a category, if it is known.
