@@ -1,6 +1,6 @@
-# AGENTS.md
+# CLAUDE.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
 
@@ -107,9 +107,9 @@ After a **code-changing** `tokex run` (read-only commands like `git status` skip
 
 The one-time bootstrap: `ensure_package` (`pip install graphifyy`, cached via `.graphify-ok`) →
 `register_skill` (cached via `.graphify-skill`) → build the map. **Skill registration targets the
-agent actually in use**, not just Codex: `resolve_platform` reads `config.agent`, else env
-auto-detects Codex (`Codex`), else asks the user when interactive (or leaves guidance to run
-`tokex setup`). It calls `graphify install` (Codex), `graphify install --platform <p>`, or
+agent actually in use**, not just Claude: `resolve_platform` reads `config.agent`, else env
+auto-detects Claude (`CLAUDECODE`), else asks the user when interactive (or leaves guidance to run
+`tokex setup`). It calls `graphify install` (claude), `graphify install --platform <p>`, or
 `graphify <p> install` (fallback for graphify's per-platform subcommands).
 
 `tokex setup` runs the whole bootstrap up front (the "start project" moment); `tokex graph` forces a
@@ -180,8 +180,8 @@ tracked modifications — new/untracked files show via `git status`.)
 
 ## Commit & attribution rules (must follow)
 
-- **Never** put the word "Codex" in a branch name or commit message.
-- **Never** add an AI co-author or attribution trailer (`Co-Authored-By: Codex …`,
+- **Never** put the word "claude" in a branch name or commit message.
+- **Never** add an AI co-author or attribution trailer (`Co-Authored-By: Claude …`,
   "Generated with…") to commits or PRs.
 - **Real-time commits (must follow):** after changing a file, commit that change immediately.
   Don't batch unrelated edits into one commit or leave the tree dirty between steps — one logical
@@ -192,7 +192,7 @@ tracked modifications — new/untracked files show via `git status`.)
 
 **Never push to `main`.** Every change ships through a PR:
 
-1. Branch off `main` with a fresh, descriptive name. **Never** put "Codex" in a branch name.
+1. Branch off `main` with a fresh, descriptive name. **Never** put "claude" in a branch name.
 2. Make changes there (real-time commits still apply — commit each logical change immediately).
 3. `gh pr create` to open a PR.
 4. **Wait for the `CI` workflow to pass** (`.github/workflows/ci.yml` builds + tests `tokex`). Do not
