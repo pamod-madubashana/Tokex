@@ -125,7 +125,10 @@ A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it:
   mode). Headline path: `tokex "list all rust projects"`.
 - `<known-category>: text` (`Category`) or a JSON object (`Json`) → a **structured answer** using
   that category's header (`plan-stack`, `theme`, …). These aren't runnable commands.
-- a lone token → a command.
+
+A lone word is a prompt too (`tokex "hi"` → the agent just answers), so User mode reads like a normal
+AI agent. A raw command needs args (`tokex git status`, handled in `main.rs` before classify) or
+`tokex run <cmd>`.
 
 `fulfill` runs a **step loop** (`MAX_STEPS`): each turn the model replies `{"run":cmd}` (run one
 command, its capped output fed back) or `{"answer":text}` (the final, **analyzed** answer). It

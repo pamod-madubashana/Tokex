@@ -132,14 +132,14 @@ pub enum Dispatch {
     Json(String),
     /// `category: text` with a known category — returns a structured answer.
     Category(String, String),
-    /// Free-text task — the model produces a command and tokex runs it.
+    /// Free-text task for the assistant agent — it decides whether to run a command or just answer.
     Prompt(String),
-    /// A single bare token — run it as a command, not a prompt.
-    Command(String),
 }
 
-/// Classify one argument. Quotes (i.e. a single arg) reach here; multi-arg invocations are commands
-/// and never get classified.
+/// Classify one argument. A single quoted arg reaches here; multi-arg invocations are commands and
+/// never get classified. Anything that isn't a JSON object or a `known-category: text` is a prompt —
+/// even a lone word like `hi`, so User mode behaves like a normal AI agent. Run a raw command with
+/// args (`tokex git status`) or `tokex run <cmd>`.
 pub fn classify(arg: &str) -> Dispatch {
     let s = arg.trim();
     if s.starts_with('{') {
@@ -150,12 +150,7 @@ pub fn classify(arg: &str) -> Dispatch {
             return Dispatch::Category(cat.trim().to_string(), rest.trim().to_string());
         }
     }
-    // Whitespace means it reads as a sentence → a task; a lone token is a command (e.g. `ls`).
-    if s.split_whitespace().count() > 1 {
-        Dispatch::Prompt(s.to_string())
-    } else {
-        Dispatch::Command(s.to_string())
-    }
+    Dispatch::Prompt(s.to_string())
 }
 
 /// Parse the JSON multi-category form into `(category, text)` pairs. Accepts a flat object
@@ -628,7 +623,7 @@ mod tests {
             classify("list all rust projects in current dir"),
             Dispatch::Prompt("list all rust projects in current dir".into())
         );
-        assert_eq!(classify("ls"), Dispatch::Command("ls".into()));
+        assert_eq!(classify("hi"), Dispatch::Prompt("hi".into()));
         match classify("{\"plan-stack\":\"x\"}") {
             Dispatch::Json(_) => {}
             other => panic!("expected Json, got {other:?}"),

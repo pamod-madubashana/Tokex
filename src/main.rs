@@ -239,13 +239,12 @@ fn is_passthrough(first: &str) -> bool {
     !first.starts_with('-') && !SUBCOMMANDS.contains(&first)
 }
 
-/// Handle a single bare argument: a free-text task (model writes a command, tokex runs it), a
-/// `category: text` / JSON structured prompt, or a lone command.
+/// Handle a single bare argument: a free-text task for the assistant agent (which runs commands or
+/// answers), or a `category: text` / JSON structured prompt.
 fn dispatch_one(arg: &str, mode: prompt::Mode) {
     match prompt::classify(arg) {
-        prompt::Dispatch::Command(cmd) => run_intent(Intent::from_command(cmd)),
-        // No role given → default to the `assistant` role. The model decides how to answer — including
-        // running `git ls-files`/`tree` for a local-structure ask, or generating an example structure.
+        // No role given → default to the `assistant` role. The agent decides how to answer — run a
+        // command (`git ls-files`/`tree`) when the task needs it, or just answer (a bare `hi`).
         prompt::Dispatch::Prompt(task) => run_role("assistant", &task, mode),
         prompt::Dispatch::Json(s) => match prompt::parse_json(&s) {
             Ok(pairs) => run_prompt(pairs, mode),
