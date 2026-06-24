@@ -11,7 +11,8 @@
 //!
 //! Every call is streamed; the LLM key comes from config.
 
-use std::io::{BufRead, BufReader, Write};
+use std::collections::VecDeque;
+use std::io::{BufRead, BufReader, IsTerminal, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -53,17 +54,15 @@ question briefly and practically. No preamble, no markdown headings.";
 // A task either runs a command (and we return the REAL output) or is answered in text. The model
 // decides and replies with JSON: {"run":"<command>"} or {"answer":"<text>"}.
 const DECISION_SYSTEM: &str = "You fulfill a developer's request from their CURRENT working \
-directory, step by step. Each turn, reply with EXACTLY ONE JSON object:\n\
-- {\"run\":\"<command>\"} — run one command and return its output as the final result (use this when \
-the command's own output is the answer, e.g. a count or a branch name).\n\
-- {\"run\":\"<command>\",\"more\":true} — run one command, see its output, then continue. Use this to \
-explore step by step: inspect ONE level at a time, skip vendored/build dirs (vendor, target, \
-node_modules, .git, dist), and NEVER dump the whole recursive tree at once on a large project.\n\
-- {\"answer\":\"<text>\"} — give the final answer; wrap any file tree/table/aligned layout in a \
-fenced ``` code block so it renders in a terminal.\n\
-Use the fewest turns that do the job: one good filtered command is better than many. Only use \
-\"more\":true when you genuinely need to see a result before deciding the next step. ONE simple \
-correct command per turn; stay within the current directory tree. Output ONLY the JSON.";
+directory by gathering information with shell commands and then ANALYZING it into a clear answer. \
+Each turn, reply with EXACTLY ONE JSON object:\n\
+- {\"run\":\"<command>\"} — run one command to gather info; you'll see its output and can run more. \
+Inspect step by step: ONE level at a time, skip vendored/build dirs (vendor, target, node_modules, \
+.git, dist), never dump the whole recursive tree.\n\
+- {\"answer\":\"<text>\"} — your final answer for the user. SYNTHESIZE what you found; do NOT just \
+paste raw command output. Wrap any file tree/table/aligned layout in a fenced ``` code block.\n\
+Always finish with an {\"answer\"}. Use the fewest commands that do the job. ONE simple correct \
+command per turn; stay within the current directory tree. Output ONLY the JSON.";
 
 
 /// The header (system prompt) bound to a category, if it is known.
@@ -195,23 +194,21 @@ git); never PowerShell or cmd syntax."
         None => format!("{DECISION_SYSTEM} {shell}"),
     };
 
-    // Step loop: the model runs a command, sees its (capped) output, and either keeps exploring
-    // (`more`) or answers — so a big task is done incrementally instead of one mega-command. A
-    // direct `run` (no `more`) that succeeds returns the real output; a failure is fed back to fix.
+    // Step loop: the model runs commands to gather info (each output fed back, capped), then
+    // finishes with an ANALYZED answer — never a raw command dump. A failure is fed back to fix.
     let mut transcript = String::new();
-    let mut last_code = 0;
     for _ in 0..MAX_STEPS {
         let user = if transcript.is_empty() {
             task.to_string()
         } else {
-            format!("Request: {task}\n\nSteps so far:\n{transcript}\nDecide the next step.")
+            format!("Request: {task}\n\nCommands run so far:\n{transcript}\nGather more if needed, else answer.")
         };
         match parse_decision(&one_call(cfg, &system, &user, mode)?) {
             Decision::Answer(text) => {
                 print_answer(&text, mode);
                 return Ok(0);
             }
-            Decision::Run { cmd, more } => {
+            Decision::Run(cmd) => {
                 if is_risky(&cmd) {
                     if !confirm(&cmd) {
                         let _ = writeln!(std::io::stderr(), "aborted (not confirmed).");
@@ -220,29 +217,22 @@ git); never PowerShell or cmd syntax."
                 } else {
                     let _ = writeln!(std::io::stderr(), "$ {cmd}"); // safe → show what runs
                 }
-                let (code, out) = exec_capture(&cmd, opts)?;
-                last_code = code;
-                if !more && code == 0 {
-                    print!("{out}"); // direct command whose output is the result
-                    return Ok(0);
-                }
-                // Exploring, or a failure to fix: feed the (capped) result back and continue.
-                transcript
-                    .push_str(&format!("$ {cmd}\n(exit {code})\n{}\n\n", trunc(&out, 1500)));
+                let (code, out) = exec_capture(&cmd, opts, mode)?;
+                transcript.push_str(&format!("$ {cmd}\n(exit {code})\n{}\n\n", trunc(&out, 1500)));
             }
         }
     }
-    // Out of steps: ask for a final answer from what we've gathered.
+    // Out of steps: force a final answer from what we've gathered.
     let user = format!(
-        "Request: {task}\n\nSteps so far:\n{transcript}\nGive your final answer now as {{\"answer\":\"...\"}}."
+        "Request: {task}\n\nCommands run so far:\n{transcript}\nGive your final answer now as {{\"answer\":\"...\"}}."
     );
     if let Decision::Answer(text) = parse_decision(&one_call(cfg, &system, &user, mode)?) {
         print_answer(&text, mode);
     }
-    Ok(last_code)
+    Ok(0)
 }
 
-// Max model turns per task (exploration steps + fixes) before forcing a final answer.
+// Max commands the model may run to gather info before it must give a final answer.
 const MAX_STEPS: usize = 6;
 
 /// Print an answer to stdout. User mode renders markdown to ANSI (headers, lists, syntax-highlighted
@@ -264,21 +254,20 @@ fn print_answer(text: &str, mode: Mode) {
 }
 
 enum Decision {
-    /// Run a command; `more` = the model wants to see the output and keep going (exploration step).
-    Run { cmd: String, more: bool },
+    /// Run a command to gather info (the loop always continues and feeds the output back).
+    Run(String),
     Answer(String),
 }
 
-/// Read the model's JSON decision: `{"run":…[, "more":true]}` → run a command, `{"answer":…}` →
-/// text. Anything that isn't our JSON is treated as a plain answer (graceful when a model strays).
+/// Read the model's JSON decision: `{"run":…}` → gather via a command, `{"answer":…}` → final text.
+/// Anything that isn't our JSON is treated as a plain answer (graceful when a model strays).
 fn parse_decision(content: &str) -> Decision {
     if let (Some(a), Some(b)) = (content.find('{'), content.rfind('}')) {
         if a < b {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content[a..=b]) {
                 if let Some(cmd) = v.get("run").and_then(|x| x.as_str()) {
                     if !cmd.trim().is_empty() {
-                        let more = v.get("more").and_then(|x| x.as_bool()).unwrap_or(false);
-                        return Decision::Run { cmd: cmd.trim().to_string(), more };
+                        return Decision::Run(cmd.trim().to_string());
                     }
                 }
                 if let Some(ans) = v.get("answer").and_then(|x| x.as_str()) {
@@ -294,7 +283,7 @@ fn parse_decision(content: &str) -> Decision {
 /// PowerShell on Windows, bash on Unix — and `rtk run -c` uses the OS shell (cmd.exe on Windows),
 /// which mangles pipes/quoting. So write the command to a temp script and invoke the native
 /// interpreter on it by path: no inline quoting, no cross-shell mount surprises.
-fn exec_capture(cmd: &str, opts: &Options) -> Result<(i32, String), String> {
+fn exec_capture(cmd: &str, opts: &Options, mode: Mode) -> Result<(i32, String), String> {
     let pid = std::process::id();
     // Fail hard on error so a bad command gets a non-zero exit (PowerShell non-terminating errors
     // and bash mid-pipeline failures otherwise pass silently) — that's what drives the fix retry.
@@ -310,11 +299,106 @@ fn exec_capture(cmd: &str, opts: &Options) -> Result<(i32, String), String> {
     std::fs::write(&tmp, content).map_err(|e| format!("temp script: {e}"))?;
     // ponytail: temp paths have no spaces, so the unquoted path is safe; quote only if that breaks.
     let exec = Options { raw: true, footer: false, llm_on_failure: false, ..*opts };
-    let mut buf: Vec<u8> = Vec::new();
-    let result = orchestrate::run(&Intent::from_command(run_line), &mut buf, &mut std::io::sink(), None, &exec);
+    // Capture every line, and in User mode show the last 5 live in a ```bash viewport (see TailView).
+    let mut view = TailView::new(mode);
+    let result = orchestrate::run(&Intent::from_command(run_line), &mut view, &mut std::io::sink(), None, &exec);
+    let buf = view.finish();
     let _ = std::fs::remove_file(&tmp);
     let code = result?;
     Ok((code, cap_lines(&String::from_utf8_lossy(&buf), OUTPUT_CAP)))
+}
+
+/// Live tail of a running command. Captures every byte (returned to the caller) while redrawing the
+/// last `TAIL_ROWS` lines in place on stderr inside a ```bash fence, so a human sees output stream by
+/// without it scrolling the whole terminal. The viewport is erased when the command finishes, leaving
+/// only the synthesized answer. Off in Model mode or when stderr isn't a TTY (no cursor control).
+/// ponytail: fixed-height in-place redraw with relative cursor moves; fine unless it straddles a
+/// scroll region — good enough for a transient progress view.
+const TAIL_ROWS: usize = 5;
+
+struct TailView {
+    full: Vec<u8>,
+    pending: String,
+    tail: VecDeque<String>,
+    shown: bool,
+    live: bool,
+}
+
+impl TailView {
+    fn new(mode: Mode) -> Self {
+        let live = mode == Mode::User && std::io::stderr().is_terminal();
+        TailView { full: Vec::new(), pending: String::new(), tail: VecDeque::new(), shown: false, live }
+    }
+
+    fn push_line(&mut self, line: String) {
+        if self.tail.len() == TAIL_ROWS {
+            self.tail.pop_front();
+        }
+        self.tail.push_back(line);
+        self.redraw();
+    }
+
+    /// Redraw the fixed 7-line block (open fence + 5 rows + close fence) in place.
+    fn redraw(&mut self) {
+        let mut err = std::io::stderr();
+        let w = term_width().saturating_sub(1);
+        if self.shown {
+            let _ = write!(err, "\r\x1b[{}A", TAIL_ROWS + 1); // back up to the open fence
+        }
+        let _ = writeln!(err, "\x1b[K```bash");
+        for i in 0..TAIL_ROWS {
+            let line = self.tail.get(i).map(String::as_str).unwrap_or("");
+            let _ = writeln!(err, "\x1b[K{}", clip(line, w));
+        }
+        let _ = write!(err, "\x1b[K```");
+        let _ = err.flush();
+        self.shown = true;
+    }
+
+    /// Return the full captured output, erasing the viewport first so the final answer stays clean.
+    fn finish(self) -> Vec<u8> {
+        if self.live && self.shown {
+            let mut err = std::io::stderr();
+            let _ = write!(err, "\r\x1b[{}A\x1b[J", TAIL_ROWS + 1); // up to the fence, clear downward
+            let _ = err.flush();
+        }
+        self.full
+    }
+}
+
+impl Write for TailView {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.full.extend_from_slice(b);
+        if self.live {
+            for ch in String::from_utf8_lossy(b).chars() {
+                match ch {
+                    '\n' => {
+                        let line = std::mem::take(&mut self.pending);
+                        self.push_line(line);
+                    }
+                    '\r' => {}
+                    _ => self.pending.push(ch),
+                }
+            }
+        }
+        Ok(b.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn term_width() -> usize {
+    std::env::var("COLUMNS").ok().and_then(|c| c.parse().ok()).filter(|w| *w > 0).unwrap_or(80)
+}
+
+/// Clip a line to `max` display chars (UTF-8 safe) so it can't wrap and break the cursor math.
+fn clip(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", s.chars().take(max.saturating_sub(1)).collect::<String>())
+    }
 }
 
 /// Flood stop: a weak model sometimes emits a recurse-everything command (10k+ lines). Keep the
@@ -573,15 +657,8 @@ mod tests {
     #[test]
     fn parse_decision_run_answer_and_fallback() {
         match parse_decision(r#"{"run":"find . -name Cargo.toml | wc -l"}"#) {
-            Decision::Run { cmd, more } => {
-                assert_eq!(cmd, "find . -name Cargo.toml | wc -l");
-                assert!(!more);
-            }
+            Decision::Run(cmd) => assert_eq!(cmd, "find . -name Cargo.toml | wc -l"),
             _ => panic!("expected Run"),
-        }
-        match parse_decision(r#"{"run":"ls","more":true}"#) {
-            Decision::Run { more, .. } => assert!(more),
-            _ => panic!("expected Run with more"),
         }
         match parse_decision(r#"here you go: {"answer":"the ? operator propagates errors"}"#) {
             Decision::Answer(a) => assert_eq!(a, "the ? operator propagates errors"),

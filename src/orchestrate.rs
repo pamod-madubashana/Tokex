@@ -62,7 +62,10 @@ pub fn run(
         intent.to_rtk_args()
     };
     if opts.ultra_compact {
-        args.push("--ultra-compact".to_string());
+        // `--ultra-compact` is a global flag on rtk's *top-level* CLI. Native filters (git, …)
+        // forward trailing hyphen-args to the underlying tool, so appended it leaks into e.g.
+        // `git status --short` and git errors. It must precede the subcommand: `rtk --ultra-compact git …`.
+        args.insert(0, "--ultra-compact".to_string());
     }
 
     // PROCESS_START on the human channel only; machine channel is pure line/result events.

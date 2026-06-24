@@ -120,19 +120,18 @@ blocking refresh. All best-effort — never blocks or fails a tokex run. Gated b
 A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it:
 - **free text → a task** (`Prompt`): handled by the **`assistant` role** (the default when none is
   named). `prompt::fulfill` asks the model to **decide** (`DECISION_SYSTEM`): reply
-  `{"run":"<cmd>"}` or `{"answer":"<text>"}`. A `run` is executed and the **real output** returned;
-  an `answer` is printed (markdown→ANSI in User mode). Headline path: `tokex "list all rust
-  projects"`.
+  `{"run":"<cmd>"}` to gather, or `{"answer":"<text>"}` to finish. It **gathers with commands then
+  SYNTHESIZES an answer** — never a raw command dump. The answer is printed (markdown→ANSI in User
+  mode). Headline path: `tokex "list all rust projects"`.
 - `<known-category>: text` (`Category`) or a JSON object (`Json`) → a **structured answer** using
   that category's header (`plan-stack`, `theme`, …). These aren't runnable commands.
 - a lone token → a command.
 
-`fulfill` runs a **step loop** (`MAX_STEPS`): each turn the model replies `{"run":cmd}`,
-`{"run":cmd,"more":true}`, or `{"answer":text}`. A plain `run` that succeeds returns the **real
-output**; `more:true` runs the command, feeds the (capped) output back, and continues — so a big task
-is done incrementally (explore one level, skip vendor/target) instead of one mega-command; a failure
-is fed back to fix. Output is capped at `OUTPUT_CAP` lines (`cap_lines`) as a flood stop against a
-weak model's recurse-everything command.
+`fulfill` runs a **step loop** (`MAX_STEPS`): each turn the model replies `{"run":cmd}` (run one
+command, its capped output fed back) or `{"answer":text}` (the final, **analyzed** answer). It
+explores one level at a time (skip vendor/target) instead of one mega-command; a failure is fed back
+to fix; out of steps it's forced to answer from what it gathered. Output is capped at `OUTPUT_CAP`
+lines (`cap_lines`) as a flood stop against a weak model's recurse-everything command.
 
 **Execution** (`exec_capture`): commands are generated for the **native shell** — PowerShell on
 Windows, bash on Unix (the decision prompt is OS-specific) — and run by writing the command to a temp
@@ -140,7 +139,9 @@ script (`.ps1`/`.sh`, with `$ErrorActionPreference='Stop'`/`set -e` so errors ge
 and invoking the interpreter on it *by path* via rtk (raw). This avoids cmd.exe's pipe/quoting
 mangling and cross-shell mount mismatches. **Safe (read-only) commands run unprompted**; only a
 **risky** one (`is_risky`: delete/overwrite/install/push/network/sudo, POSIX *and* PowerShell
-cmdlets) is confirmed (default No).
+cmdlets) is confirmed (default No). In User mode a running command's last 5 output lines stream live
+in a ```bash viewport (`TailView`) — redrawn in place via cursor moves, erased when it finishes so
+only the answer remains; off in Model mode / non-TTY.
 
 Each **category** binds a name to a *header* in the `CATEGORIES` table — **add a category by adding a
 row**. Prompts require an LLM key.
