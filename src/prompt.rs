@@ -213,7 +213,9 @@ pub fn fulfill(
     let shell = if cfg!(windows) {
         "Any command runs in Windows PowerShell — use PowerShell cmdlets and syntax (Get-ChildItem, \
 Select-String, Measure-Object, Select-Object, Where-Object). Do NOT use bash/POSIX tools (no sed, \
-awk, grep, or `find` with -printf)."
+awk, grep, or `find` with -printf). When writing output to a file whose path is built from a \
+filename, use `Out-File -LiteralPath <path>` (or `Set-Content -LiteralPath`) instead of `>` — `>` \
+treats `[` and `]` in the path as wildcards and fails on names that contain them."
     } else {
         "Any command runs in a POSIX bash shell — use POSIX tools (find, grep, sed, awk, wc, ls, \
 git); never PowerShell or cmd syntax."
