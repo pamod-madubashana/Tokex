@@ -5,6 +5,7 @@
 mod config;
 mod graphify;
 mod install;
+mod install_agent;
 mod intent;
 mod llm;
 mod mcp;
@@ -58,6 +59,11 @@ enum Cmd {
     InstallRtk,
     /// Refresh the graphify code map now (`graphify update .`).
     Graph,
+    /// Install Tokex skills into the current project for a specific agent.
+    Install {
+        /// Agent name (opencode, claude, codex, cursor, gemini, windsurf, aider, continue, cline).
+        agent: String,
+    },
 }
 
 /// Top-level subcommands. Anything else as the first arg is treated as a command to run, so
@@ -69,6 +75,7 @@ const SUBCOMMANDS: &[&str] = &[
     "mcp",
     "install-rtk",
     "graph",
+    "install",
     "help",
 ];
 
@@ -176,6 +183,13 @@ fn main() {
         Some(Cmd::Graph) => {
             if let Err(e) = graphify::update_blocking() {
                 eprintln!("tokex: graph update failed: {e}");
+                exit(1);
+            }
+            return;
+        }
+        Some(Cmd::Install { agent }) => {
+            if let Err(e) = install_agent::install_agent(&agent) {
+                eprintln!("tokex: install failed: {e}");
                 exit(1);
             }
             return;

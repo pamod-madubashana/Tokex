@@ -92,6 +92,35 @@ tokex orchestrator "build the release artifacts"         # nemotron-ultra
 Roles share your configured endpoint + key, swapping in the role's model id. Add or retune a role by
 editing the `ROLES` table in `prompt.rs`.
 
+## Install skills for your agent
+
+Tokex can install project-specific skills for your AI agent. This creates a `.tokex/` directory in
+your project with skill files tailored for your agent:
+
+```bash
+tokex install opencode    # install skills for OpenCode
+tokex install claude      # install skills for Claude Code
+tokex install codex       # install skills for Codex
+tokex install cursor      # install skills for Cursor
+```
+
+Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`, `aider`,
+`continue`, `cline`.
+
+The installed skills include:
+- **graphify** - Knowledge graph generation from code/docs
+- **tokex-run** - Run commands through RTK with normalized output
+- **tokex-tree** - Show project structure as a tree
+
+Skills are installed in `.tokex/skills/` and are automatically detected by your agent when
+working in this project directory.
+
+To list installed skills in the current project:
+
+```bash
+tokex install --list       # or just: tokex install
+```
+
 ## Scripting (repetitive or multi-file changes)
 
 Don't edit many files by hand for the same change. Write one idempotent script under `Scripts/`,

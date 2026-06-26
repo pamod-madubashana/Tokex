@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "tokex"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Agent Execution Middleware: a deterministic RTK orchestration layer that normalizes agent intent and stream output without owning execution."
 
