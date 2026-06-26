@@ -4,6 +4,8 @@
 //! Tokex's current `is_risky` uses a substring blocklist which has false positives/negatives.
 //! This module provides a proper permission system with pattern matching.
 
+#![allow(dead_code)]
+
 use glob::Pattern;
 
 /// Permission action for a tool or command.

@@ -5,6 +5,8 @@
 //! tool abstraction so the model can call structured tools directly, improving reliability and
 //! reducing token waste from shell command generation.
 
+#![allow(dead_code)]
+
 use std::path::{Path, PathBuf};
 
 /// A tool that the agentic loop can invoke.
