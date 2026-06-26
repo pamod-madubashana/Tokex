@@ -115,12 +115,34 @@ pub fn run_setup() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     let agent = if graph_auto {
-        Text::new("Which agent for the graphify skill? (e.g. claude, codex, cursor, opencode; blank = auto-detect)")
-            .with_default("")
-            .prompt()
-            .map_err(|e| e.to_string())?
-            .trim()
-            .to_string()
+        let choice = Select::new(
+            "Agent for graphify skill",
+            vec![
+                "opencode",
+                "claude",
+                "codex",
+                "cursor",
+                "gemini",
+                "windsurf",
+                "aider",
+                "continue",
+                "cline",
+                "custom (type your own)",
+                "auto-detect",
+            ],
+        )
+        .prompt()
+        .map_err(|e| e.to_string())?;
+
+        match choice {
+            "custom (type your own)" => Text::new("Agent name")
+                .prompt()
+                .map_err(|e| e.to_string())?
+                .trim()
+                .to_string(),
+            "auto-detect" => String::new(),
+            other => other.to_string(),
+        }
     } else {
         String::new()
     };

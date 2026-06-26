@@ -893,40 +893,40 @@ fn stream(
     Ok(content)
 }
 
-/// A tiny stderr spinner that animates until dropped. Braille frames + even frame pacing make the
-/// spin smooth; the glyph is tinted to match the agent's narration. ponytail: stdlib `\r`+flush, no
-/// crossterm — a one-line redraw needs no alternate screen or raw mode (those would wipe the
-/// inline-streamed output). Braille assumes a modern terminal; fine on Windows Terminal.
+/// A tiny stderr spinner that animates until stopped. Shows a green checkmark on completion.
 pub struct Spinner {
     stop: Arc<AtomicBool>,
+    done: Arc<AtomicBool>,
+    label: Arc<std::sync::Mutex<String>>,
     handle: Option<thread::JoinHandle<()>>,
 }
 
-// Classic braille dots and the per-frame budget. Pacing keeps frames evenly spaced (crossterm's idea)
-// regardless of how long a write takes.
 const SPIN_FRAMES: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const SPIN_FRAME: Duration = Duration::from_millis(80);
+const GREEN: &str = "\x1b[32m";
+const RESET: &str = "\x1b[0m";
 
 impl Spinner {
     pub fn start(label: &str) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
+        let done = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
-        let label = label.to_string();
+        let done_flag = done.clone();
+        let label = Arc::new(std::sync::Mutex::new(label.to_string()));
+        let label_clone = label.clone();
 
         let handle = thread::spawn(move || {
             let mut err = std::io::stderr();
-
-            // 1. HIDE THE CURSOR before the animation starts loop
             let _ = write!(err, "\x1b[?25l");
             let _ = err.flush();
 
             let mut i = 0;
             while !flag.load(Ordering::Relaxed) {
                 let start = std::time::Instant::now();
-
+                let current = label_clone.lock().unwrap().clone();
                 let _ = write!(
                     err,
-                    "\r{SAY_COLOR}{}\x1b[0m {label}...",
+                    "\r{SAY_COLOR}{}\x1b[0m {current}...",
                     SPIN_FRAMES[i % SPIN_FRAMES.len()]
                 );
                 let _ = err.flush();
@@ -937,21 +937,42 @@ impl Spinner {
                 }
             }
 
-            // 2. CLEANUP: Clear the line AND SHOW THE CURSOR again (\x1b[?25h)
-            let _ = write!(err, "\r\x1b[K");
+            // Show green checkmark on completion
+            if done_flag.load(Ordering::Relaxed) {
+                let current = label_clone.lock().unwrap().clone();
+                let _ = write!(err, "\r{GREEN}✓{RESET} {current}\n");
+            } else {
+                let _ = write!(err, "\r\x1b[K");
+            }
+            let _ = write!(err, "\x1b[?25h");
             let _ = err.flush();
         });
 
         Spinner {
             stop,
+            done,
+            label,
             handle: Some(handle),
         }
+    }
+
+    /// Update the spinner label while running.
+    pub fn set_label(&self, label: &str) {
+        *self.label.lock().unwrap() = label.to_string();
+    }
+
+    /// Stop the spinner with a green checkmark.
+    pub fn complete(&self) {
+        self.done.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::Relaxed);
     }
 }
 
 impl Drop for Spinner {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        if !self.done.load(Ordering::Relaxed) {
+            self.stop.store(true, Ordering::Relaxed);
+        }
         if let Some(h) = self.handle.take() {
             let _ = h.join();
         }

@@ -164,9 +164,12 @@ fn main() {
             }
             // Bootstrap graphify (install + register skill for the chosen agent + build map) now.
             if config::load().graph_auto {
-                let _spinner = prompt::Spinner::start("bootstrapping graphify");
+                let spinner = prompt::Spinner::start("bootstrapping graphify");
                 if let Err(e) = graphify::update_blocking_after_setup() {
+                    spinner.complete();
                     eprintln!("tokex: graphify setup skipped: {e}");
+                } else {
+                    spinner.complete();
                 }
             }
             return;
