@@ -70,6 +70,17 @@ fn run_inherit(prog: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
+/// Run silently (output captured), returning success.
+fn run_capture(prog: &str, args: &[&str]) -> bool {
+    Command::new(prog)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 fn data_file(name: &str) -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join("tokex").join(name))
 }
@@ -240,10 +251,46 @@ pub fn update_blocking() -> Result<(), String> {
     update_blocking_with_prompt(true, true)
 }
 
-/// Post-setup bootstrap: setup already asked for the agent. If the user left it blank and
-/// auto-detection cannot identify the agent, skip skill registration without asking again.
-pub fn update_blocking_after_setup() -> Result<(), String> {
-    update_blocking_with_prompt(false, false)
+/// Step-based bootstrap for setup: caller supplies spinners per step.
+pub fn setup_steps() -> Result<Vec<(&'static str, Box<dyn FnOnce() -> Result<(), String>>)>, String>
+{
+    let _cwd = current_project_dir().ok_or_else(|| "not in a project directory".to_string())?;
+    let py = py();
+
+    let ensure_py = py.to_string();
+    let register_py = py.to_string();
+    let update_py = py.to_string();
+
+    Ok(vec![
+        (
+            "installing graphify package",
+            Box::new(move || {
+                if !ensure_package(&ensure_py, false) {
+                    return Err(
+                        "graphify unavailable — need Python + pip to install graphifyy".into(),
+                    );
+                }
+                Ok(())
+            }),
+        ),
+        (
+            "registering graphify skill",
+            Box::new(move || {
+                register_skill(&register_py, false, false);
+                Ok(())
+            }),
+        ),
+        (
+            "building code map",
+            Box::new(move || {
+                if run_capture(&update_py, &["-m", "graphify", "update", "."]) {
+                    Ok(())
+                } else {
+                    Err("graphify update failed".into())
+                }
+            }),
+        ),
+    ])
 }
 
 fn update_blocking_with_prompt(prompt_when_unknown: bool, verbose: bool) -> Result<(), String> {

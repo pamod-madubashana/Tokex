@@ -162,14 +162,21 @@ fn main() {
                 eprintln!("tokex: setup failed: {e}");
                 exit(1);
             }
-            // Bootstrap graphify (install + register skill for the chosen agent + build map) now.
+            // Bootstrap graphify step by step, each with its own spinner + green tick.
             if config::load().graph_auto {
-                let spinner = prompt::Spinner::start("bootstrapping graphify");
-                if let Err(e) = graphify::update_blocking_after_setup() {
-                    spinner.complete();
-                    eprintln!("tokex: graphify setup skipped: {e}");
-                } else {
-                    spinner.complete();
+                match graphify::setup_steps() {
+                    Ok(steps) => {
+                        for (label, step) in steps {
+                            let spinner = prompt::Spinner::start(label);
+                            if let Err(e) = step() {
+                                spinner.complete();
+                                eprintln!("tokex: {e}");
+                            } else {
+                                spinner.complete();
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("tokex: {e}"),
                 }
             }
             return;

@@ -897,7 +897,6 @@ fn stream(
 pub struct Spinner {
     stop: Arc<AtomicBool>,
     done: Arc<AtomicBool>,
-    label: Arc<std::sync::Mutex<String>>,
     handle: Option<thread::JoinHandle<()>>,
 }
 
@@ -912,8 +911,7 @@ impl Spinner {
         let done = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
         let done_flag = done.clone();
-        let label = Arc::new(std::sync::Mutex::new(label.to_string()));
-        let label_clone = label.clone();
+        let label = label.to_string();
 
         let handle = thread::spawn(move || {
             let mut err = std::io::stderr();
@@ -923,10 +921,9 @@ impl Spinner {
             let mut i = 0;
             while !flag.load(Ordering::Relaxed) {
                 let start = std::time::Instant::now();
-                let current = label_clone.lock().unwrap().clone();
                 let _ = write!(
                     err,
-                    "\r{SAY_COLOR}{}\x1b[0m {current}...",
+                    "\r{SAY_COLOR}{}\x1b[0m {label}...",
                     SPIN_FRAMES[i % SPIN_FRAMES.len()]
                 );
                 let _ = err.flush();
@@ -939,8 +936,7 @@ impl Spinner {
 
             // Show green checkmark on completion
             if done_flag.load(Ordering::Relaxed) {
-                let current = label_clone.lock().unwrap().clone();
-                let _ = write!(err, "\r{GREEN}✓{RESET} {current}\n");
+                let _ = write!(err, "\r{GREEN}✓{RESET} {label}\n");
             } else {
                 let _ = write!(err, "\r\x1b[K");
             }
@@ -951,14 +947,8 @@ impl Spinner {
         Spinner {
             stop,
             done,
-            label,
             handle: Some(handle),
         }
-    }
-
-    /// Update the spinner label while running.
-    pub fn set_label(&self, label: &str) {
-        *self.label.lock().unwrap() = label.to_string();
     }
 
     /// Stop the spinner with a green checkmark.
