@@ -245,17 +245,19 @@ fn main() {
 /// Shared run tail: apply config modes, orchestrate through rtk, exit with its code. Used by the
 /// `run` subcommand, stdin-JSON mode, and the bare `tokex <command>` passthrough.
 fn run_intent(intent: Intent) {
-    let mut out = io::stdout();
-    let mut err = io::stderr();
-
     // Apply configured modes. `--llm` / JSON `"llm": true` force the insight on always; the `llm`
     // compression mode only analyzes failures (a successful command stays token-free).
     let cfg = config::load();
+    let model_mode = matches!(
+        std::env::args().nth(1).as_deref(),
+        Some("-m") | Some("--model")
+    );
+
     let opts = orchestrate::Options {
         raw: cfg.compression == "off",
         ultra_compact: cfg.rtk_verbosity == "ultra-compact",
-        llm_on_failure: cfg.compression == "llm",
-        footer: true,
+        llm_on_failure: cfg.compression == "llm" && !model_mode,
+        footer: !model_mode,
     };
 
     // Load LLM config when it could be used. Fail fast only when `--llm` explicitly demanded it.
@@ -272,16 +274,93 @@ fn run_intent(intent: Intent) {
         None
     };
 
-    match orchestrate::run(&intent, &mut out, &mut err, llm_cfg.as_ref(), &opts) {
-        Ok(code) => {
-            if cfg.graph_auto {
-                graphify::auto_update(&intent.command);
+    if model_mode {
+        // Model mode: capture all output silently, return one clean JSON result.
+        let mut buf = Vec::new();
+        let mut err_sink = io::sink();
+        let code = match orchestrate::run(&intent, &mut buf, &mut err_sink, llm_cfg.as_ref(), &opts)
+        {
+            Ok(c) => c,
+            Err(e) => {
+                let result = serde_json::json!({
+                    "type": "result",
+                    "status": "failed",
+                    "code": -1,
+                    "error": e,
+                });
+                println!("{result}");
+                exit(1);
             }
-            exit(code);
+        };
+        let output = String::from_utf8_lossy(&buf);
+
+        // Group multi-line warnings/errors into single entries.
+        let mut important: Vec<String> = Vec::new();
+        let mut current_block: Vec<String> = Vec::new();
+        for line in output.lines() {
+            let trimmed = line.trim();
+            let starts_new = trimmed.starts_with("warning:")
+                || trimmed.starts_with("error[")
+                || trimmed.starts_with("error:")
+                || trimmed.starts_with("error ");
+
+            if starts_new && !current_block.is_empty() {
+                important.push(current_block.join("\n"));
+                current_block.clear();
+            }
+            if starts_new
+                || (!current_block.is_empty()
+                    && (trimmed.starts_with("--> ")
+                        || trimmed.starts_with("  --> ")
+                        || trimmed.starts_with("   |")
+                        || trimmed.starts_with("   =")))
+            {
+                current_block.push(trimmed.to_string());
+            }
         }
-        Err(e) => {
-            eprintln!("tokex: {e}");
-            exit(1);
+        if !current_block.is_empty() {
+            important.push(current_block.join("\n"));
+        }
+
+        let status = if code == 0 { "ok" } else { "failed" };
+
+        let result = serde_json::json!({
+            "type": "result",
+            "status": status,
+            "code": code,
+        });
+        println!("{result}");
+
+        // Emit insight with structured error/warning details.
+        if !important.is_empty() || code != 0 {
+            let insight = serde_json::json!({
+                "type": "insight",
+                "status": status,
+                "root_cause": intent.command,
+                "important_errors": important,
+            });
+            println!("{insight}");
+        }
+
+        if cfg.graph_auto {
+            graphify::auto_update(&intent.command);
+        }
+        exit(code);
+    } else {
+        // User mode: stream output live to stderr/stdout.
+        let mut out = io::stdout();
+        let mut err = io::stderr();
+        match orchestrate::run(&intent, &mut out, &mut err, llm_cfg.as_ref(), &opts) {
+            Ok(code) => {
+                if cfg.graph_auto {
+                    graphify::auto_update(&intent.command);
+                }
+                exit(code);
+            }
+            Err(e) => {
+                eprintln!("tokex: {e}");
+                exit(1);
+            }
         }
     }
 }

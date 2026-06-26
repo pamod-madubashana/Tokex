@@ -81,7 +81,7 @@ Installed by `tokex install {agent}`. Reinstall with `tokex install {agent}`.
     )
 }
 
-fn tokex_skill(agent: &str, project_name: &str) -> String {
+fn tokex_skill(_agent: &str, project_name: &str) -> String {
     format!(
         r#"---
 name: tokex
@@ -90,44 +90,48 @@ description: "Tokex RTK orchestration skills for {project_name}. Run commands, i
 
 # Tokex Skills
 
-**IMPORTANT:** You are an AI agent. Always use `tokex -m` (model mode) to get clean output
-without spinners, live streaming, or ANSI decorations. Never use `tokex run` or bare `tokex`
-without `-m` — that mode is for humans and will produce noisy, hard-to-parse output.
+**IMPORTANT:** You are an AI agent. Always use `tokex -m` (model mode) for clean output.
+
+## Two modes: commands vs prompts
+
+tokex has **commands** and **prompts**. They use different syntax — mixing them up will break.
+
+### Commands (no quotes)
+Known CLI commands like `cargo`, `git`, `npm`, `ls`. Pass them **without quotes**:
+```bash
+tokex -m cargo test
+tokex -m git status
+tokex -m npm install
+tokex -m cargo build --release
+```
+
+### Prompts (quoted)
+Natural language instructions. Pass them **inside double quotes**:
+```bash
+tokex -m "show the project tree"
+tokex -m "list all rust projects"
+tokex -m "explain the architecture"
+tokex -m "install requirements and init"
+```
 
 ## Rules
 
-1. Always prefix commands with `tokex -m` — never `tokex run` or bare `tokex`.
-2. One command at a time. Feed the result back before running the next.
-3. Skip vendor/, target/, .git/ — they're noise.
-
-## Run a command
-
-```bash
-tokex -m "cargo test"
-tokex -m cargo test           # shorthand
-tokex -m "git status"
-```
-
-## Show project structure
-
-```bash
-tokex -m "show the project tree"
-tokex -m "give me the directory layout"
-```
-
-## Install skills for this project
-
-```bash
-tokex install {agent}         # reinstall/update skills
-```
+1. Always use `-m` — never bare `tokex` or `tokex run`.
+2. **Commands = no quotes. Prompts = quoted.** Never mix.
+3. One command at a time. Feed the result back before running the next.
+4. Skip vendor/, target/, .git/ — they're noise.
 
 ## Installed for: {project_name}
-
-Skills are in `.tokex/skills/`. Your agent detects them automatically.
 "#,
-        agent = agent,
         project_name = project_name
     )
+}
+
+/// Project-local skills go in `.agents/skills/tokex/` — the standard path OpenCode, Amp,
+/// and Antigravity use for project-level skills. NOT `.opencode/` (causes BunInstallFailedError)
+/// and NOT `.tokex/` (nobody reads it).
+fn project_skills_dir(project_dir: &Path) -> PathBuf {
+    project_dir.join(".agents").join("skills").join("tokex")
 }
 
 pub fn install_agent(agent: &str) -> Result<(), String> {
@@ -151,7 +155,7 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "project".into());
 
-    // 1. Install to agent's native skills directory so the agent actually reads them.
+    // 1. Install to agent's native global skills directory.
     if let Some(skills_dir) = agent_skills_dir(agent_id) {
         let skill_dir = skills_dir.join("tokex");
         fs::create_dir_all(&skill_dir)
@@ -172,30 +176,31 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
         eprintln!("tokex: installed skills -> {}", skill_dir.display());
     }
 
-    // 2. Also write to .tokex/skills/ as a project-local reference.
-    let tokex_dir = project_dir.join(".tokex").join("skills");
-    fs::create_dir_all(&tokex_dir)
-        .map_err(|e| format!("failed to create {}: {e}", tokex_dir.display()))?;
+    // 2. Install to project-local .agents/skills/tokex/.
+    let project_skills = project_skills_dir(&project_dir);
+    fs::create_dir_all(&project_skills)
+        .map_err(|e| format!("failed to create {}: {e}", project_skills.display()))?;
 
     fs::write(
-        tokex_dir.join("graphify.md"),
-        graphify_skill(&agent_id, &project_name),
-    )
-    .map_err(|e| format!("failed to write graphify skill: {e}"))?;
-
-    fs::write(
-        tokex_dir.join("tokex.md"),
+        project_skills.join("SKILL.md"),
         tokex_skill(&agent_id, &project_name),
     )
     .map_err(|e| format!("failed to write tokex skill: {e}"))?;
 
+    fs::write(
+        project_skills.join("graphify.md"),
+        graphify_skill(&agent_id, &project_name),
+    )
+    .map_err(|e| format!("failed to write graphify skill: {e}"))?;
+
+    eprintln!("tokex: project skills -> {}", project_skills.display());
     Ok(())
 }
 
 pub fn list_installed() -> Result<(), String> {
     let project_dir = current_project_dir().ok_or("not in a project directory")?;
 
-    let skills_dir = project_dir.join(".tokex").join("skills");
+    let skills_dir = project_skills_dir(&project_dir);
     if !skills_dir.exists() {
         eprintln!("No Tokex skills installed in this project.");
         return Ok(());
