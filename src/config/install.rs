@@ -1,4 +1,4 @@
-//! Fetch the latest `rtk` release for the current platform, so Tokex ships standalone and pulls
+//! Fetch the latest `rtk` release for the current platform, so Cotrex ships standalone and pulls
 //! its execution backend on demand. Extraction shells out to the system `tar` (bsdtar on Windows
 //! handles .zip; tar auto-detects gzip on unix) — ponytail: no archive crates for this.
 
@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// rtk release pinned to the version this build of Tokex was tested against. Bump deliberately —
+/// rtk release pinned to the version this build of Cotrex was tested against. Bump deliberately —
 /// never `latest`, so a breaking rtk release can't silently break every install.
 const RTK_VERSION: &str = "v0.42.4";
 
@@ -22,9 +22,9 @@ pub fn rtk_bin_name() -> &'static str {
     }
 }
 
-/// Where a downloaded rtk lives: `<data_dir>/tokex/rtk[.exe]`.
+/// Where a downloaded rtk lives: `<data_dir>/cotrex/rtk[.exe]`.
 pub fn rtk_install_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("tokex").join(rtk_bin_name()))
+    dirs::data_dir().map(|d| d.join("cotrex").join(rtk_bin_name()))
 }
 
 /// Is `rtk` resolvable on PATH? (Checks for the binary file; doesn't spawn it.)
@@ -35,8 +35,8 @@ fn on_path() -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve rtk. Order: next to our own binary → tokex data dir → PATH → download the pinned
-/// release. When built via the workspace, rtk is compiled to the same directory as tokex,
+/// Resolve rtk. Order: next to our own binary → cotrex data dir → PATH → download the pinned
+/// release. When built via the workspace, rtk is compiled to the same directory as cotrex,
 /// so the first check almost always succeeds.
 pub fn ensure_rtk() -> Result<PathBuf, String> {
     let name = rtk_bin_name();
@@ -83,13 +83,13 @@ pub fn install() -> Result<PathBuf, String> {
     let url = download_url(asset);
     eprintln!("Downloading rtk {RTK_VERSION} ({asset}) …");
 
-    let tmp = std::env::temp_dir().join(format!("tokex-rtk-{}", std::process::id()));
+    let tmp = std::env::temp_dir().join(format!("cotrex-rtk-{}", std::process::id()));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let archive = tmp.join(asset);
 
     // Download (ureq follows the GitHub release redirects to the CDN).
     let resp = ureq::get(&url)
-        .set("User-Agent", "tokex")
+        .set("User-Agent", "cotrex")
         .call()
         .map_err(|e| format!("download failed: {e}"))?;
     let mut reader = resp.into_reader();

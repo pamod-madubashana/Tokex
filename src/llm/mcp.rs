@@ -1,5 +1,5 @@
-//! Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0). Exposes Tokex's execution core
-//! as the `run` tool so agents call it natively — RTK executes, Tokex returns it as structured,
+//! Minimal MCP server over stdio (newline-delimited JSON-RPC 2.0). Exposes Cotrex's execution core
+//! as the `run` tool so agents call it natively — RTK executes, Cotrex returns it as structured,
 //! agent-consumable events.
 //!
 //! ponytail: hand-rolled subset (initialize, tools/list, tools/call, ping) to keep the project
@@ -19,7 +19,7 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 /// Run the stdio JSON-RPC loop until stdin closes. stdout is the protocol channel — nothing else
 /// may write to it (the execution core writes to in-memory buffers instead).
 pub fn serve() -> ! {
-    eprintln!("tokex MCP server (stdio) — protocol {PROTOCOL_VERSION}");
+    eprintln!("cotrex MCP server (stdio) — protocol {PROTOCOL_VERSION}");
     let cfg = crate::config::load();
     let stdin = io::stdin();
     let mut stdout = io::stdout();
@@ -70,7 +70,7 @@ fn dispatch(method: &str, params: &Value, cfg: &Config) -> Result<Option<Value>,
         "initialize" => Ok(Some(json!({
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": "tokex", "version": env!("CARGO_PKG_VERSION")},
+            "serverInfo": {"name": "cotrex", "version": env!("CARGO_PKG_VERSION")},
         }))),
         "notifications/initialized" => Ok(None),
         "ping" => Ok(Some(json!({}))),
@@ -95,7 +95,7 @@ fn tools_list() -> Value {
         },
     }, {
         "name": "set_agent",
-        "description": "Tell tokex which AI agent you are so it can install the graphify code-map \
+        "description": "Tell cotrex which AI agent you are so it can install the graphify code-map \
     skill for the right platform. Call this once with your platform id if a run result says the agent \
     is unknown.",
         "inputSchema": {
@@ -150,7 +150,7 @@ fn tools_call(params: &Value, cfg: &Config) -> Value {
     }
 }
 
-/// `set_agent`: the model tells tokex its own platform (no TTY needed). Persists it and kicks off
+/// `set_agent`: the model tells cotrex its own platform (no TTY needed). Persists it and kicks off
 /// the graphify skill install in the background — never writes to stdout (the JSON-RPC channel).
 fn tool_set_agent(params: &Value) -> Value {
     let agent = params
@@ -219,7 +219,7 @@ fn tool_delegate(params: &Value, cfg: &Config) -> Value {
 
     let llm_cfg = match LlmConfig::from_config(cfg) {
         Some(c) => crate::agent::prompt::with_model(&c, model),
-        None => return tool_error("LLM not configured — run `tokex setup` first".into()),
+        None => return tool_error("LLM not configured — run `cotrex setup` first".into()),
     };
 
     let opts = Options {
@@ -258,7 +258,7 @@ fn tool_plan(params: &Value, cfg: &Config) -> Value {
 
     let llm_cfg = match LlmConfig::from_config(cfg) {
         Some(c) => crate::agent::prompt::with_model(&c, model),
-        None => return tool_error("LLM not configured — run `tokex setup` first".into()),
+        None => return tool_error("LLM not configured — run `cotrex setup` first".into()),
     };
 
     let opts = Options {
@@ -322,7 +322,7 @@ fn tool_run(params: &Value, cfg: &Config) -> Value {
             // If we can't tell which agent this is, ask the model to identify itself so the graphify
             // code-map skill can be installed for the right platform.
             if cfg.graph_auto && crate::graphify::current_agent().is_none() {
-                content.push(json!({"type": "text", "text": "note: tokex couldn't detect your agent, so the graphify code-map skill isn't installed. Call the set_agent tool with your platform id (e.g. claude, codex, cursor, gemini) to enable it."}));
+                content.push(json!({"type": "text", "text": "note: cotrex couldn't detect your agent, so the graphify code-map skill isn't installed. Call the set_agent tool with your platform id (e.g. claude, codex, cursor, gemini) to enable it."}));
             }
             json!({"content": content, "isError": code != 0})
         }
@@ -344,7 +344,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(r["protocolVersion"], PROTOCOL_VERSION);
-        assert_eq!(r["serverInfo"]["name"], "tokex");
+        assert_eq!(r["serverInfo"]["name"], "cotrex");
     }
 
     #[test]

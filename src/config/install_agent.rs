@@ -74,21 +74,21 @@ Turn any folder of files into a navigable knowledge graph with community detecti
 
 ## Installed for: {project_name}
 
-Installed by `tokex install {agent}`. Reinstall with `tokex install {agent}`.
+Installed by `cotrex install {agent}`. Reinstall with `cotrex install {agent}`.
 "#,
         agent = agent,
         project_name = project_name
     )
 }
 
-fn tokex_skill(agent: &str, project_name: &str) -> String {
+fn cotrex_skill(agent: &str, project_name: &str) -> String {
     let mcp_config = match agent {
         "claude" => {
             r#"Add to `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```"#
@@ -98,7 +98,7 @@ fn tokex_skill(agent: &str, project_name: &str) -> String {
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```"#
@@ -108,7 +108,7 @@ fn tokex_skill(agent: &str, project_name: &str) -> String {
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```"#
@@ -118,7 +118,7 @@ fn tokex_skill(agent: &str, project_name: &str) -> String {
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```"#
@@ -128,7 +128,7 @@ fn tokex_skill(agent: &str, project_name: &str) -> String {
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```"#
@@ -137,17 +137,17 @@ fn tokex_skill(agent: &str, project_name: &str) -> String {
 
     format!(
         r#"---
-name: tokex
-description: "Tokex RTK orchestration skills for {project_name}. Run commands, inspect projects, and get normalized output."
+name: cotrex
+description: "Cotrex RTK orchestration skills for {project_name}. Run commands, inspect projects, and get normalized output."
 ---
 
-# Tokex Skills
+# Cotrex Skills
 
-**IMPORTANT:** You are an AI agent. Always use tokex via MCP (preferred) or CLI fallback.
+**IMPORTANT:** You are an AI agent. Always use cotrex via MCP (preferred) or CLI fallback.
 
 ## 1. MCP (preferred)
 
-Connect to tokex as an MCP server. This gives you tools: `run`, `delegate`, `plan`, `list_roles`, `set_agent`.
+Connect to cotrex as an MCP server. This gives you tools: `run`, `delegate`, `plan`, `list_roles`, `set_agent`.
 
 **Setup** — {mcp_config}
 
@@ -172,23 +172,23 @@ set_agent(agent="{agent}")
 
 ## 2. CLI fallback (when MCP is not available)
 
-If tokex is not running as an MCP server, use CLI commands directly.
+If cotrex is not running as an MCP server, use CLI commands directly.
 
 ### Commands (no quotes)
 Known CLI commands like `cargo`, `git`, `npm`, `ls`. Pass them **without quotes**:
 ```bash
-tokex -m cargo test
-tokex -m git status
-tokex -m npm install
-tokex -m cargo build --release
+cotrex -m cargo test
+cotrex -m git status
+cotrex -m npm install
+cotrex -m cargo build --release
 ```
 
 ### Prompts (quoted)
 Natural language instructions. Pass them **inside double quotes**:
 ```bash
-tokex -m "show the project tree"
-tokex -m "list all rust projects"
-tokex -m "explain the architecture"
+cotrex -m "show the project tree"
+cotrex -m "list all rust projects"
+cotrex -m "explain the architecture"
 ```
 
 ## Rules
@@ -206,11 +206,11 @@ tokex -m "explain the architecture"
     )
 }
 
-/// Project-local skills go in `.agents/skills/tokex/` — the standard path OpenCode, Amp,
+/// Project-local skills go in `.agents/skills/cotrex/` — the standard path OpenCode, Amp,
 /// and Antigravity use for project-level skills. NOT `.opencode/` (causes BunInstallFailedError)
-/// and NOT `.tokex/` (nobody reads it).
+/// and NOT `.cotrex/` (nobody reads it).
 fn project_skills_dir(project_dir: &Path) -> PathBuf {
-    project_dir.join(".agents").join("skills").join("tokex")
+    project_dir.join(".agents").join("skills").join("cotrex")
 }
 
 pub fn install_agent(agent: &str) -> Result<(), String> {
@@ -236,15 +236,15 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
 
     // 1. Install to agent's native global skills directory.
     if let Some(skills_dir) = agent_skills_dir(agent_id) {
-        let skill_dir = skills_dir.join("tokex");
+        let skill_dir = skills_dir.join("cotrex");
         fs::create_dir_all(&skill_dir)
             .map_err(|e| format!("failed to create {}: {e}", skill_dir.display()))?;
 
         fs::write(
             skill_dir.join("SKILL.md"),
-            tokex_skill(&agent_id, &project_name),
+            cotrex_skill(&agent_id, &project_name),
         )
-        .map_err(|e| format!("failed to write tokex skill: {e}"))?;
+        .map_err(|e| format!("failed to write cotrex skill: {e}"))?;
 
         fs::write(
             skill_dir.join("graphify.md"),
@@ -252,19 +252,19 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
         )
         .map_err(|e| format!("failed to write graphify skill: {e}"))?;
 
-        eprintln!("tokex: installed skills -> {}", skill_dir.display());
+        eprintln!("cotrex: installed skills -> {}", skill_dir.display());
     }
 
-    // 2. Install to project-local .agents/skills/tokex/.
+    // 2. Install to project-local .agents/skills/cotrex/.
     let project_skills = project_skills_dir(&project_dir);
     fs::create_dir_all(&project_skills)
         .map_err(|e| format!("failed to create {}: {e}", project_skills.display()))?;
 
     fs::write(
         project_skills.join("SKILL.md"),
-        tokex_skill(&agent_id, &project_name),
+        cotrex_skill(&agent_id, &project_name),
     )
-    .map_err(|e| format!("failed to write tokex skill: {e}"))?;
+    .map_err(|e| format!("failed to write cotrex skill: {e}"))?;
 
     fs::write(
         project_skills.join("graphify.md"),
@@ -272,7 +272,7 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
     )
     .map_err(|e| format!("failed to write graphify skill: {e}"))?;
 
-    eprintln!("tokex: project skills -> {}", project_skills.display());
+    eprintln!("cotrex: project skills -> {}", project_skills.display());
     Ok(())
 }
 
@@ -281,11 +281,11 @@ pub fn list_installed() -> Result<(), String> {
 
     let skills_dir = project_skills_dir(&project_dir);
     if !skills_dir.exists() {
-        eprintln!("No Tokex skills installed in this project.");
+        eprintln!("No Cotrex skills installed in this project.");
         return Ok(());
     }
 
-    eprintln!("Tokex skills in {}:", project_dir.display());
+    eprintln!("Cotrex skills in {}:", project_dir.display());
     if let Ok(entries) = fs::read_dir(&skills_dir) {
         for entry in entries.flatten() {
             let name = entry.file_name();

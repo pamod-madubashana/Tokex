@@ -3,8 +3,8 @@
 use std::io::{self, IsTerminal, Read};
 use std::process::exit;
 
+use super::cli::{Cli, Cmd, SUBCOMMANDS};
 use crate::agent;
-use crate::cli::{Cli, Cmd};
 use crate::config;
 use crate::core::intent::Intent;
 use crate::core::orchestrate;
@@ -12,7 +12,60 @@ use crate::graphify;
 use crate::llm;
 use crate::script;
 
-use clap::CommandFactory;
+use clap::{CommandFactory, Parser};
+
+/// Top-level entry point: parse args, detect mode, route to the right handler.
+pub fn run() {
+    let args: Vec<String> = std::env::args().collect();
+
+    let model_mode = matches!(
+        args.get(1).map(String::as_str),
+        Some("-m") | Some("--model")
+    );
+    let rest: &[String] = if model_mode { &args[2..] } else { &args[1..] };
+    let mode = if model_mode {
+        agent::prompt::Mode::Model
+    } else {
+        agent::prompt::Mode::User
+    };
+
+    if let Some(first) = rest.first() {
+        if agent::prompt::role(first).is_some() {
+            run_role(first, rest[1..].join(" ").trim(), mode);
+        }
+        if is_passthrough(first) {
+            if rest.len() >= 2 {
+                run_intent(Intent::from_command(rest.join(" ")));
+            } else {
+                dispatch_one(&rest[0], mode);
+            }
+            return;
+        }
+        if model_mode {
+            eprintln!("cotrex: -m takes a prompt or role, not '{first}'");
+            exit(2);
+        }
+    } else if model_mode {
+        eprintln!("cotrex: -m needs a prompt or role, e.g. cotrex -m \"list rust projects\"");
+        exit(2);
+    }
+
+    let cli = Cli::parse();
+
+    let intent = match cli.cmd {
+        Some(cmd) => match dispatch_cmd(cmd) {
+            Some(intent) => intent,
+            None => return,
+        },
+        None => read_stdin_intent(),
+    };
+
+    run_intent(intent);
+}
+
+fn is_passthrough(first: &str) -> bool {
+    !first.starts_with('-') && !SUBCOMMANDS.contains(&first)
+}
 
 /// Dispatch a parsed CLI subcommand. Returns the intent for commands that fall through to
 /// `run_intent`, or exits directly for self-contained subcommands.
@@ -37,13 +90,13 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
                 Some(f) => match script::run(&f, &mut out, &mut err, &opts) {
                     Ok(code) => exit(code),
                     Err(e) => {
-                        eprintln!("tokex: {e}");
+                        eprintln!("cotrex: {e}");
                         exit(1);
                     }
                 },
                 None => {
                     if let Err(e) = script::ensure_dir() {
-                        eprintln!("tokex: cannot create Scripts/: {e}");
+                        eprintln!("cotrex: cannot create Scripts/: {e}");
                         exit(1);
                     }
                     eprintln!("{}", script::INSTRUCTIONS);
@@ -53,7 +106,7 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
         }
         Cmd::Setup => {
             if let Err(e) = config::run_setup() {
-                eprintln!("tokex: setup failed: {e}");
+                eprintln!("cotrex: setup failed: {e}");
                 exit(1);
             }
             if config::load().graph_auto {
@@ -63,13 +116,13 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
                             let spinner = agent::prompt::Spinner::start(label);
                             if let Err(e) = step() {
                                 spinner.complete();
-                                eprintln!("tokex: {e}");
+                                eprintln!("cotrex: {e}");
                             } else {
                                 spinner.complete();
                             }
                         }
                     }
-                    Err(e) => eprintln!("tokex: {e}"),
+                    Err(e) => eprintln!("cotrex: {e}"),
                 }
             }
             exit(0);
@@ -79,7 +132,7 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
             match config::install::install() {
                 Ok(path) => println!("rtk installed at {}", path.display()),
                 Err(e) => {
-                    eprintln!("tokex: install-rtk failed: {e}");
+                    eprintln!("cotrex: install-rtk failed: {e}");
                     exit(1);
                 }
             }
@@ -87,7 +140,7 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
         }
         Cmd::Graph => {
             if let Err(e) = graphify::update_blocking() {
-                eprintln!("tokex: graph update failed: {e}");
+                eprintln!("cotrex: graph update failed: {e}");
                 exit(1);
             }
             exit(0);
@@ -96,13 +149,13 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
             match agent {
                 Some(a) => {
                     if let Err(e) = config::install_agent::install_agent(&a) {
-                        eprintln!("tokex: install failed: {e}");
+                        eprintln!("cotrex: install failed: {e}");
                         exit(1);
                     }
                 }
                 None => {
                     if let Err(e) = config::install_agent::list_installed() {
-                        eprintln!("tokex: {e}");
+                        eprintln!("cotrex: {e}");
                         exit(1);
                     }
                 }
@@ -111,7 +164,7 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
         }
         Cmd::Update => {
             if let Err(e) = config::update::run() {
-                eprintln!("tokex: update failed: {e}");
+                eprintln!("cotrex: update failed: {e}");
                 exit(1);
             }
             exit(0);
@@ -141,7 +194,7 @@ pub fn read_stdin_intent() -> Intent {
 }
 
 /// Shared run tail: apply config modes, orchestrate through rtk, exit with its code. Used by the
-/// `run` subcommand, stdin-JSON mode, and the bare `tokex <command>` passthrough.
+/// `run` subcommand, stdin-JSON mode, and the bare `cotrex <command>` passthrough.
 pub fn run_intent(intent: Intent) {
     let cfg = config::load();
     let model_mode = matches!(
@@ -160,7 +213,7 @@ pub fn run_intent(intent: Intent) {
         match llm::LlmConfig::from_config(&cfg) {
             Some(c) => Some(c),
             None if intent.llm => {
-                eprintln!("tokex: LLM compression needs an API key — run `tokex setup`");
+                eprintln!("cotrex: LLM compression needs an API key — run `cotrex setup`");
                 exit(2);
             }
             None => None,
@@ -249,7 +302,7 @@ pub fn run_intent(intent: Intent) {
                 exit(code);
             }
             Err(e) => {
-                eprintln!("tokex: {e}");
+                eprintln!("cotrex: {e}");
                 exit(1);
             }
         }
@@ -264,7 +317,7 @@ pub fn dispatch_one(arg: &str, mode: agent::prompt::Mode) {
         agent::prompt::Dispatch::Json(s) => match agent::prompt::parse_json(&s) {
             Ok(pairs) => run_prompt(pairs, mode),
             Err(e) => {
-                eprintln!("tokex: {e}");
+                eprintln!("cotrex: {e}");
                 exit(2);
             }
         },
@@ -294,7 +347,7 @@ pub fn load_llm_or_exit(cfg: &config::Config) -> llm::LlmConfig {
     match llm::LlmConfig::from_config(cfg) {
         Some(c) => c,
         None => {
-            eprintln!("tokex: prompts need an API key — run `tokex setup`");
+            eprintln!("cotrex: prompts need an API key — run `cotrex setup`");
             exit(2);
         }
     }
@@ -313,11 +366,11 @@ pub fn exec_opts(cfg: &config::Config) -> orchestrate::Options {
 /// output) or answer; the role just picks which model and biases it with the role's persona.
 pub fn run_role(role: &str, task: &str, mode: agent::prompt::Mode) -> ! {
     if task.is_empty() {
-        eprintln!("tokex: role '{role}' needs a task, e.g. tokex {role} \"...\"");
+        eprintln!("cotrex: role '{role}' needs a task, e.g. cotrex {role} \"...\"");
         exit(2);
     }
     let (model, header, _role_mode, max_steps) = agent::prompt::role(role).unwrap_or_else(|| {
-        eprintln!("tokex: unknown role '{role}'");
+        eprintln!("cotrex: unknown role '{role}'");
         exit(2);
     });
     fulfill(task, model, Some(header), mode, max_steps);
@@ -345,7 +398,7 @@ fn fulfill(
     ) {
         Ok(code) => exit(code),
         Err(e) => {
-            eprintln!("tokex: {e}");
+            eprintln!("cotrex: {e}");
             exit(1);
         }
     }
@@ -361,7 +414,7 @@ fn run_prompt(pairs: Vec<(String, String)>, mode: agent::prompt::Mode) -> ! {
         let header = match agent::prompt::category_header(cat) {
             Ok(h) => h,
             Err(e) => {
-                eprintln!("tokex: {e}");
+                eprintln!("cotrex: {e}");
                 exit(2);
             }
         };
@@ -373,9 +426,24 @@ fn run_prompt(pairs: Vec<(String, String)>, mode: agent::prompt::Mode) -> ! {
             &opts,
             agent::prompt::MAX_STEPS,
         ) {
-            eprintln!("tokex: {e}");
+            eprintln!("cotrex: {e}");
             exit(1);
         }
     }
     exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn passthrough_routes_commands_not_subcommands() {
+        assert!(is_passthrough("git"));
+        assert!(is_passthrough("ls"));
+        assert!(!is_passthrough("run"));
+        assert!(!is_passthrough("setup"));
+        assert!(!is_passthrough("--help"));
+        assert!(!is_passthrough("-V"));
+    }
 }

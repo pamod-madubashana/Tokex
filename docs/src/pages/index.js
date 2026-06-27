@@ -16,33 +16,33 @@ const features = [
   },
   {
     title: 'Standalone',
-    body: 'Ship just tokex — it downloads its rtk backend for your OS, pinned to a tested version. Nothing else to install.',
+    body: 'Ship just cotrex — it downloads its rtk backend for your OS, pinned to a tested version. Nothing else to install.',
   },
   {
     title: 'No lock-in',
-    body: 'Tokex never bypasses RTK and never owns execution. Predictable routing, structured events, agent-agnostic.',
+    body: 'Cotrex never bypasses RTK and never owns execution. Predictable routing, structured events, agent-agnostic.',
   },
 ];
 
-const SNIPPET = `$ tokex run "cargo test"
+const SNIPPET = `$ cotrex run "cargo test"
 {"type":"stdout","line":"test result: ok. 21 passed","severity":"info"}
 {"type":"result","status":"ok","code":0}`;
 
 export default function Home() {
   const { siteConfig } = useDocusaurusContext();
   return (
-    <Layout title="Tokex" description={siteConfig.tagline}>
+    <Layout title="Cotrex" description={siteConfig.tagline}>
       <header className={styles.hero}>
-        <img src={useBaseUrl('/img/tokex.png')} alt="Tokex" className={styles.logo} />
-        <h1 className={styles.title}>Tokex</h1>
+        <img src={useBaseUrl('/img/cotrex.png')} alt="Cotrex" className={styles.logo} />
+        <h1 className={styles.title}>Cotrex</h1>
         <p className={styles.tagline}>
-          RTK executes. <span className={styles.accent}>Tokex makes execution consumable by agents.</span>
+          RTK executes. <span className={styles.accent}>Cotrex makes execution consumable by agents.</span>
         </p>
         <div className={styles.buttons}>
           <Link className={styles.primary} to="/docs">
             Get started
           </Link>
-          <Link className={styles.secondary} href="https://github.com/pamod-madubashana/Tokex">
+          <Link className={styles.secondary} href="https://github.com/pamod-madubashana/Cotrex">
             GitHub
           </Link>
         </div>

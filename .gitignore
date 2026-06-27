@@ -1,10 +1,10 @@
 /target
 Cargo.lock
-tokex-graph.json
+cotrex-graph.json
 graphify-out/
 docs/node_modules
 docs/build
 docs/.docusaurus
 .opencode/
-.tokex/
+.cotrex/
 .agents/

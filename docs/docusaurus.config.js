@@ -1,17 +1,17 @@
 module.exports = {
-  title: 'Tokex',
-  tagline: 'RTK executes. Tokex makes execution consumable by agents.',
+  title: 'Cotrex',
+  tagline: 'RTK executes. Cotrex makes execution consumable by agents.',
   url: 'https://pamod-madubashana.github.io',
-  baseUrl: '/Tokex/',
+  baseUrl: '/Cotrex/',
   onBrokenLinks: 'throw',
   markdown: {
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
   },
-  favicon: 'img/tokex.png',
+  favicon: 'img/cotrex.png',
   organizationName: 'pamod-madubashana',
-  projectName: 'Tokex',
+  projectName: 'Cotrex',
   deploymentBranch: 'gh-pages',
   presets: [
     [
@@ -20,7 +20,7 @@ module.exports = {
         docs: {
           routeBasePath: '/docs',
           sidebarPath: require.resolve('./sidebars.js'),
-          editUrl: 'https://github.com/pamod-madubashana/Tokex/edit/main/docs/',
+          editUrl: 'https://github.com/pamod-madubashana/Cotrex/edit/main/docs/',
         },
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
@@ -35,17 +35,17 @@ module.exports = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Tokex',
+      title: 'Cotrex',
       logo: {
-        alt: 'Tokex',
-        src: 'img/tokex.png',
+        alt: 'Cotrex',
+        src: 'img/cotrex.png',
       },
       items: [
         { type: 'doc', docId: 'intro', position: 'left', label: 'Docs' },
         { type: 'doc', docId: 'mcp', position: 'left', label: 'MCP' },
         { type: 'doc', docId: 'downloads', position: 'left', label: 'Downloads' },
         {
-          href: 'https://github.com/pamod-madubashana/Tokex',
+          href: 'https://github.com/pamod-madubashana/Cotrex',
           label: 'GitHub',
           position: 'right',
         },
@@ -67,11 +67,11 @@ module.exports = {
           title: 'More',
           items: [
             { label: 'Downloads', to: '/docs/downloads' },
-            { label: 'GitHub', href: 'https://github.com/pamod-madubashana/Tokex' },
+            { label: 'GitHub', href: 'https://github.com/pamod-madubashana/Cotrex' },
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Tokex.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Cotrex.`,
     },
   },
 };

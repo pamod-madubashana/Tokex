@@ -1,7 +1,7 @@
-//! Persistent config + the interactive `tokex setup` flow.
+//! Persistent config + the interactive `cotrex setup` flow.
 //!
-//! The key lives in the user's config dir (e.g. %APPDATA%\tokex\config.toml), set *after* install
-//! via `tokex setup` — not a project `.env`. Env vars still override for power users / CI.
+//! The key lives in the user's config dir (e.g. %APPDATA%\cotrex\config.toml), set *after* install
+//! via `cotrex setup` — not a project `.env`. Env vars still override for power users / CI.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -39,7 +39,7 @@ impl Default for Config {
 }
 
 pub fn config_path() -> Option<PathBuf> {
-    dirs::config_dir().map(|d| d.join("tokex").join("config.toml"))
+    dirs::config_dir().map(|d| d.join("cotrex").join("config.toml"))
 }
 
 /// Load config from disk (or defaults), then apply env overrides.
@@ -48,22 +48,22 @@ pub fn load() -> Config {
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| toml::from_str::<Config>(&s).ok())
         .unwrap_or_default();
-    if let Ok(v) = std::env::var("TOKEX_LLM_URL") {
+    if let Ok(v) = std::env::var("COTREX_LLM_URL") {
         cfg.llm_url = v;
     }
-    if let Ok(v) = std::env::var("TOKEX_LLM_KEY") {
+    if let Ok(v) = std::env::var("COTREX_LLM_KEY") {
         cfg.llm_key = v;
     }
-    if let Ok(v) = std::env::var("TOKEX_LLM_MODEL") {
+    if let Ok(v) = std::env::var("COTREX_LLM_MODEL") {
         cfg.llm_model = v;
     }
-    if let Ok(v) = std::env::var("TOKEX_COMPRESSION") {
+    if let Ok(v) = std::env::var("COTREX_COMPRESSION") {
         cfg.compression = v;
     }
-    if let Ok(v) = std::env::var("TOKEX_RTK_VERBOSITY") {
+    if let Ok(v) = std::env::var("COTREX_RTK_VERBOSITY") {
         cfg.rtk_verbosity = v;
     }
-    if let Ok(v) = std::env::var("TOKEX_GRAPH_AUTO") {
+    if let Ok(v) = std::env::var("COTREX_GRAPH_AUTO") {
         cfg.graph_auto = v == "true" || v == "1" || v == "yes";
     }
     cfg

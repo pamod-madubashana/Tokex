@@ -1,14 +1,14 @@
 //! Prompts.
 //!
 //! A single quoted argument is a *prompt*, not a command. Free text is a **task**: the model turns
-//! it into one shell command and tokex *runs* it, returning the command's output (not the command).
+//! it into one shell command and cotrex *runs* it, returning the command's output (not the command).
 //! `category: text` (or a JSON object of several) instead returns a structured answer using that
 //! category's header — those aren't runnable commands.
 //!
 //! Two presentation modes:
-//! - **User** (`tokex "…"`): a spinner while the model thinks; between commands it narrates each
+//! - **User** (`cotrex "…"`): a spinner while the model thinks; between commands it narrates each
 //!   step ("Let me check…") in its own words, streams the running command's output, then the answer.
-//! - **Model** (`tokex -m "…"`): no spinner, no narration — just the output on stdout.
+//! - **Model** (`cotrex -m "…"`): no spinner, no narration — just the output on stdout.
 //!
 //! Every call is streamed; the LLM key comes from config.
 
@@ -103,7 +103,7 @@ pub fn category_header(category: &str) -> Result<&'static str, String> {
     }
 }
 
-// Roles: `tokex <role> "<task>"` offloads a small task to a role-specific model and returns its
+// Roles: `cotrex <role> "<task>"` offloads a small task to a role-specific model and returns its
 // answer, so the calling agent just waits (and spends no tokens thinking). Each row is
 // (role, model id, header, mode, max_steps). The model ids are NVIDIA NIM ids served by the
 // configured endpoint; add or retune a role by editing a row.
@@ -224,7 +224,7 @@ fn is_structure_request(s: &str) -> bool {
 /// Classify one argument. A single quoted arg reaches here; multi-arg invocations are commands and
 /// never get classified. Anything that isn't a JSON object or a `known-category: text` is a prompt —
 /// even a lone word like `hi`, so User mode behaves like a normal AI agent. Run a raw command with
-/// args (`tokex git status`) or `tokex run <cmd>`.
+/// args (`cotrex git status`) or `cotrex run <cmd>`.
 pub fn classify(arg: &str) -> Dispatch {
     let s = arg.trim();
     if s.starts_with('{') {
@@ -623,14 +623,14 @@ fn exec_capture(cmd: &str, opts: &Options, mode: Mode) -> Result<(i32, String), 
     // Fail hard on error so a bad command gets a non-zero exit (PowerShell non-terminating errors
     // and bash mid-pipeline failures otherwise pass silently) — that's what drives the fix retry.
     let (tmp, run_line, content) = if cfg!(windows) {
-        let p = std::env::temp_dir().join(format!("tokex-task-{pid}.ps1"));
+        let p = std::env::temp_dir().join(format!("cotrex-task-{pid}.ps1"));
         let line = format!(
             "powershell -NoProfile -ExecutionPolicy Bypass -File {}",
             p.display()
         );
         (p, line, format!("$ErrorActionPreference = 'Stop'\n{cmd}\n"))
     } else {
-        let p = std::env::temp_dir().join(format!("tokex-task-{pid}.sh"));
+        let p = std::env::temp_dir().join(format!("cotrex-task-{pid}.sh"));
         let line = format!("bash {}", p.display());
         (p, line, format!("set -e\n{cmd}\n"))
     };

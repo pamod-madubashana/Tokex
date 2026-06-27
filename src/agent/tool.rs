@@ -1,7 +1,7 @@
 //! Tool registry for the agentic prompt loop.
 //!
 //! OpenCode has a full tool registry with typed tools (shell, read, write, edit, glob, grep).
-//! Tokex's agentic loop currently only runs shell commands through RTK. This module adds a minimal
+//! Cotrex's agentic loop currently only runs shell commands through RTK. This module adds a minimal
 //! tool abstraction so the model can call structured tools directly, improving reliability and
 //! reducing token waste from shell command generation.
 
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn write_tool_creates_file() {
-        let dir = std::env::temp_dir().join("tokex-tool-test");
+        let dir = std::env::temp_dir().join("cotrex-tool-test");
         let _ = std::fs::create_dir_all(&dir);
         let ctx = ToolContext {
             workdir: dir.clone(),
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn edit_tool_finds_and_replaces() {
-        let dir = std::env::temp_dir().join("tokex-edit-test");
+        let dir = std::env::temp_dir().join("cotrex-edit-test");
         let _ = std::fs::create_dir_all(&dir);
         std::fs::write(dir.join("test.rs"), "fn main() {}").unwrap();
         let ctx = ToolContext {

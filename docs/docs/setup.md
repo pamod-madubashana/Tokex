@@ -5,10 +5,10 @@ title: Setup
 
 # Setup
 
-Configure Tokex *after* install with one interactive command — no file editing:
+Configure Cotrex *after* install with one interactive command — no file editing:
 
 ```bash
-tokex setup
+cotrex setup
 ```
 
 It prompts for:
@@ -22,20 +22,20 @@ It prompts for:
 | **Graph auto-update** | keep the graphify code map fresh after code changes (default yes) |
 | **Agent** | your graphify platform (`claude`, `codex`, `cursor`, …; blank = auto-detect) |
 
-When graph auto-update is on, `tokex setup` also installs graphifyy and registers the graphify skill
+When graph auto-update is on, `cotrex setup` also installs graphifyy and registers the graphify skill
 for your agent, then builds the map — so the assistant just reads it. See
 [Architecture](architecture) for details.
 
 Settings are written to your OS config dir — **not** the repo:
 
-- Windows: `%APPDATA%\tokex\config.toml`
-- Linux: `~/.config/tokex/config.toml`
-- macOS: `~/Library/Application Support/tokex/config.toml`
+- Windows: `%APPDATA%\cotrex\config.toml`
+- Linux: `~/.config/cotrex/config.toml`
+- macOS: `~/Library/Application Support/cotrex/config.toml`
 
 ## Overrides
 
-`TOKEX_LLM_URL`, `TOKEX_LLM_KEY`, and `TOKEX_LLM_MODEL` environment variables override the config
-file — handy for CI. `tokex run --llm …` forces the LLM insight on for a single run regardless of
+`COTREX_LLM_URL`, `COTREX_LLM_KEY`, and `COTREX_LLM_MODEL` environment variables override the config
+file — handy for CI. `cotrex run --llm …` forces the LLM insight on for a single run regardless of
 the configured compression mode.
 
 ## Modes

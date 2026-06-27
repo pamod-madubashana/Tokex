@@ -1,6 +1,6 @@
 //! Execution Orchestrator: validate intent, forward to RTK, normalize the stream.
 //!
-//! Tokex does not run the raw command — it spawns `rtk <args>` and reads RTK's pipes. Two reader
+//! Cotrex does not run the raw command — it spawns `rtk <args>` and reads RTK's pipes. Two reader
 //! threads feed an mpsc channel so stdout and stderr interleave live.
 //! ponytail: 2 threads + mpsc; swap to async only if we ever multiplex many concurrent execs.
 

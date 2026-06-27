@@ -10,8 +10,8 @@ title: Usage
 Several args are a command (the `run` subcommand is optional); rtk output passes through verbatim:
 
 ```bash
-tokex run "git status"
-tokex git status          # same thing
+cotrex run "git status"
+cotrex git status          # same thing
 ```
 
 ```json
@@ -26,13 +26,13 @@ tokex git status          # same thing
 ‹ ok (exit 0, 0 error line(s))
 ```
 
-Per-line JSON wrapping would cost more tokens than the raw command, so Tokex doesn't. Failing
+Per-line JSON wrapping would cost more tokens than the raw command, so Cotrex doesn't. Failing
 commands set `status: "failed"` in the footer and propagate the underlying exit code.
 
 ## Pipe an intent as JSON
 
 ```bash
-echo '{"tool":"rtk","cmd":"cargo --version"}' | tokex
+echo '{"tool":"rtk","cmd":"cargo --version"}' | cotrex
 ```
 
 `cmd` is accepted as an alias for `command`. Add `"llm": true` to request the insight.
@@ -40,7 +40,7 @@ echo '{"tool":"rtk","cmd":"cargo --version"}' | tokex
 ## Compress output with an LLM
 
 ```bash
-tokex run --llm "cargo test"
+cotrex run --llm "cargo test"
 ```
 
 After the normal lines, one extra event the agent can read instead of the full log:
@@ -63,14 +63,14 @@ asks first. If a command fails, the model reads the error and fixes it or answer
 [Setup](setup).
 
 ```bash
-tokex "list all rust projects in the current dir"     # → runs a command, prints the list
-tokex "what does the ? operator do?"                  # → answers (rendered markdown)
-tokex "plan-stack: build a music player app"          # category → structured answer
+cotrex "list all rust projects in the current dir"     # → runs a command, prints the list
+cotrex "what does the ? operator do?"                  # → answers (rendered markdown)
+cotrex "plan-stack: build a music player app"          # category → structured answer
 ```
 
-Two modes: `tokex "…"` (User) shows a spinner, streams the model's output live to stderr (thinking,
+Two modes: `cotrex "…"` (User) shows a spinner, streams the model's output live to stderr (thinking,
 or the answer text for instruct models), shows a running command's last 5 output lines live in a
-```bash viewport, and renders answers as ANSI markdown; `tokex -m "…"` (Model, for agents) shows none
+```bash viewport, and renders answers as ANSI markdown; `cotrex -m "…"` (Model, for agents) shows none
 of that — just raw output on stdout. A risky command's confirmation reads stdin, and no input aborts.
 Add a category by adding a row to `CATEGORIES` in `prompt.rs`.
 
@@ -79,13 +79,13 @@ answered directly as a depth-limited tree from `git ls-files` — honors `.gitig
 
 ## Roles (offload to a role-specific model)
 
-`tokex <role> "<task>"` runs the same decide-then-do flow on a model chosen for that role, so a
+`cotrex <role> "<task>"` runs the same decide-then-do flow on a model chosen for that role, so a
 calling agent offloads work and just waits. With no role, `assistant` is the default.
 
 ```bash
-tokex planner "plan releasing this crate to crates.io"   # glm
-tokex coder "write a Rust fn that reverses a string"     # deepseek
-tokex orchestrator "build the release artifacts"         # nemotron-ultra
+cotrex planner "plan releasing this crate to crates.io"   # glm
+cotrex coder "write a Rust fn that reverses a string"     # deepseek
+cotrex orchestrator "build the release artifacts"         # nemotron-ultra
 # also: router (nemotron-nano), assistant (qwen, default)
 ```
 
@@ -94,14 +94,14 @@ editing the `ROLES` table in `prompt.rs`.
 
 ## Install skills for your agent
 
-Tokex can install project-specific skills for your AI agent. This creates a `.tokex/` directory in
+Cotrex can install project-specific skills for your AI agent. This creates a `.cotrex/` directory in
 your project with skill files tailored for your agent:
 
 ```bash
-tokex install opencode    # install skills for OpenCode
-tokex install claude      # install skills for Claude Code
-tokex install codex       # install skills for Codex
-tokex install cursor      # install skills for Cursor
+cotrex install opencode    # install skills for OpenCode
+cotrex install claude      # install skills for Claude Code
+cotrex install codex       # install skills for Codex
+cotrex install cursor      # install skills for Cursor
 ```
 
 Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`, `aider`,
@@ -109,31 +109,31 @@ Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`,
 
 The installed skills include:
 - **graphify** - Knowledge graph generation from code/docs
-- **tokex-run** - Run commands through RTK with normalized output
-- **tokex-tree** - Show project structure as a tree
+- **cotrex-run** - Run commands through RTK with normalized output
+- **cotrex-tree** - Show project structure as a tree
 
-Skills are installed in `.tokex/skills/` and are automatically detected by your agent when
+Skills are installed in `.cotrex/skills/` and are automatically detected by your agent when
 working in this project directory.
 
 To list installed skills in the current project:
 
 ```bash
-tokex install --list       # or just: tokex install
+cotrex install --list       # or just: cotrex install
 ```
 
 ## Scripting (repetitive or multi-file changes)
 
 Don't edit many files by hand for the same change. Write one idempotent script under `Scripts/`,
-then let tokex run + verify it:
+then let cotrex run + verify it:
 
 ```bash
-tokex script                      # creates Scripts/ and prints the workflow
+cotrex script                      # creates Scripts/ and prints the workflow
 # ... write Scripts/rename.sh ...
-tokex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
+cotrex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
 ```
 
-tokex runs the script through rtk (by extension: `.sh` / `.ps1` / `.py`), then `git diff --stat` so
+cotrex runs the script through rtk (by extension: `.sh` / `.ps1` / `.py`), then `git diff --stat` so
 you verify the change from the diff instead of re-reading every file. The agent writes the script;
-tokex runs and verifies it. (`git diff` shows tracked edits; new files show via `git status`.)
+cotrex runs and verifies it. (`git diff` shows tracked edits; new files show via `git status`.)
 
 Next: [MCP](mcp).

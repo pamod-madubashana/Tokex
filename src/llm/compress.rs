@@ -1,6 +1,6 @@
 //! Optional LLM compression. RTK already filters logs; this squeezes them further into a tiny
 //! structured insight so the agent reads ~4 fields instead of raw output. Endpoint + key come from
-//! the user's config (set via `tokex setup`) — never from code.
+//! the user's config (set via `cotrex setup`) — never from code.
 
 use serde::{Deserialize, Serialize};
 

@@ -15,4 +15,4 @@ jobs:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
       # Test only our crate; vendored rtk is not our code and is heavy to compile.
-      - run: cargo test -p tokex
+      - run: cargo test -p cotrex

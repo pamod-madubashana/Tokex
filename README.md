@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/tokex.png" alt="Tokex" width="220">
+  <img src="assets/cotrex.png" alt="Cotrex" width="220">
 </p>
 
 <p align="center">
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="#what-is-tokex">About</a> &bull;
+  <a href="#what-is-cotrex">About</a> &bull;
   <a href="#installation">Install</a> &bull;
   <a href="#usage">Usage</a> &bull;
   <a href="CLAUDE.md">Architecture</a> &bull;
@@ -22,11 +22,11 @@
 
 ---
 
-## What is Tokex
+## What is Cotrex
 
-Tokex sits between an AI agent and the system. It takes an agent's
+Cotrex sits between an AI agent and the system. It takes an agent's
 **intent**, forwards it to [RTK](https://github.com/rtk-ai/rtk) — the execution truth layer — and
-returns a **normalized, dual-channel** result. Tokex never runs a raw command itself; it invokes
+returns a **normalized, dual-channel** result. Cotrex never runs a raw command itself; it invokes
 `rtk <subcommand>` and tags what RTK emits.
 
 - **Machine channel** (`stdout`): newline-delimited JSON, one event per line.
@@ -51,27 +51,27 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 ## Installation
 
-Tokex downloads its `rtk` backend **automatically** on first run — there's nothing else to install.
+Cotrex downloads its `rtk` backend **automatically** on first run — there's nothing else to install.
 
 **With your agent** — paste this to Claude Code / Cursor / Codex:
 
 ```text
-Install Tokex: download the latest release for my OS/arch from
-https://github.com/pamod-madubashana/Tokex/releases/latest, extract the `tokex` binary, put it on
-my PATH, and confirm with `tokex --version`. It fetches its rtk backend automatically on first run.
+Install Cotrex: download the latest release for my OS/arch from
+https://github.com/pamod-madubashana/Cotrex/releases/latest, extract the `cotrex` binary, put it on
+my PATH, and confirm with `cotrex --version`. It fetches its rtk backend automatically on first run.
 ```
 
 **Manual** — download the archive for your platform from
-[Releases](https://github.com/pamod-madubashana/Tokex/releases/latest), extract `tokex`, put it on
-your `PATH`, and run `tokex --version`. (`tokex install-rtk` pre-fetches rtk for offline/CI use.)
+[Releases](https://github.com/pamod-madubashana/Cotrex/releases/latest), extract `cotrex`, put it on
+your `PATH`, and run `cotrex --version`. (`cotrex install-rtk` pre-fetches rtk for offline/CI use.)
 
 **Build from source** — needs a Rust toolchain. `rtk` and `graphify` are pinned git submodules, so
 clone recursively:
 
 ```bash
-git clone --recursive https://github.com/pamod-madubashana/Tokex
-cd Tokex
-cargo build --release          # builds tokex + rtk into target/release/
+git clone --recursive https://github.com/pamod-madubashana/Cotrex
+cd Cotrex
+cargo build --release          # builds cotrex + rtk into target/release/
 ```
 
 (Already cloned flat? `git submodule update --init --recursive`.)
@@ -81,8 +81,8 @@ cargo build --release          # builds tokex + rtk into target/release/
 **Run a command through RTK:**
 
 ```bash
-tokex run "git status"
-tokex git status        # same thing — the run subcommand is optional
+cotrex run "git status"
+cotrex git status        # same thing — the run subcommand is optional
 ```
 
 ```jsonc
@@ -96,19 +96,19 @@ tokex git status        # same thing — the run subcommand is optional
 ‹ ok (exit 0, 0 error line(s))
 ```
 
-Output lines pass through verbatim — Tokex never pays a per-line JSON tax for what's meant to
+Output lines pass through verbatim — Cotrex never pays a per-line JSON tax for what's meant to
 *compress* command output. Status rides on the single footer (and, on failure, an `insight` line).
 
 **Pipe an intent as JSON** (no subcommand):
 
 ```bash
-echo '{"tool":"rtk","cmd":"cargo --version"}' | tokex
+echo '{"tool":"rtk","cmd":"cargo --version"}' | cotrex
 ```
 
 **Compress output with an LLM** (opt-in, fewer tokens for the agent):
 
 ```bash
-tokex run --llm "cargo test"
+cotrex run --llm "cargo test"
 ```
 
 ```jsonc
@@ -120,7 +120,7 @@ tokex run --llm "cargo test"
 The agent can read just that insight instead of the full log. Needs an API key (below); without
 `--llm`, no key is read and no request is made.
 
-**Prompts (a single quoted arg).** Several unquoted args are a command (`tokex git status`); a
+**Prompts (a single quoted arg).** Several unquoted args are a command (`cotrex git status`); a
 single quoted string is a prompt. **For a task, the model gathers with shell commands and then
 SYNTHESIZES an answer** — it inspects step by step, never dumps a raw command log. A safe read-only
 command runs unprompted; a risky one (delete, overwrite, install, push, network, sudo…) asks first.
@@ -128,36 +128,36 @@ If a command fails, the model reads the error and fixes it or answers from it. `
 JSON object) returns a structured answer instead.
 
 ```bash
-tokex "list all rust projects in the current dir"       # → runs `find … | sed …`, prints the list
-tokex "what does the ? operator do?"                    # → answers (rendered markdown)
-tokex "plan-stack: build a music player app"            # category → structured answer
+cotrex "list all rust projects in the current dir"       # → runs `find … | sed …`, prints the list
+cotrex "what does the ? operator do?"                    # → answers (rendered markdown)
+cotrex "plan-stack: build a music player app"            # category → structured answer
 ```
 
-Two modes. `tokex "…"` is for **you**: a spinner while waiting, then the model's output streamed live
+Two modes. `cotrex "…"` is for **you**: a spinner while waiting, then the model's output streamed live
 to stderr (thinking for reasoning models, the answer text for instruct models), a running command's
 last 5 output lines shown live in a ```bash viewport, and answers rendered as ANSI markdown
-(syntax-highlighted code). `tokex -m "…"` is for **another agent**: no spinner, no stream, no
+(syntax-highlighted code). `cotrex -m "…"` is for **another agent**: no spinner, no stream, no
 viewport, raw text — just the output on stdout. A risky command's confirmation reads stdin
-(`printf 'y\n' | tokex -m "…"`); no input safely aborts.
+(`printf 'y\n' | cotrex -m "…"`); no input safely aborts.
 
 A **project-structure** ask (`"give me the project structure"`, `"show the directory tree"`) is
 answered directly as a depth-limited tree from `git ls-files` — honors `.gitignore`, no model, no API
 key needed.
 
 ```text
-$ tokex "list all rust projects in the current dir"
+$ cotrex "list all rust projects in the current dir"
 $ find . -name Cargo.toml | sed 's|/Cargo.toml||' | sort      # safe → runs, no prompt
 .
 ```
 
-**Roles (offload to a role-specific model).** `tokex <role> "<task>"` runs the same decide-then-do
+**Roles (offload to a role-specific model).** `cotrex <role> "<task>"` runs the same decide-then-do
 flow on a model picked for that role, so a calling agent offloads work and just waits. With no role,
 `assistant` is the default.
 
 ```bash
-tokex planner "plan releasing this crate to crates.io"   # glm
-tokex coder "write a Rust fn that reverses a string"     # deepseek
-tokex orchestrator "build the release artifacts"         # nemotron-ultra
+cotrex planner "plan releasing this crate to crates.io"   # glm
+cotrex coder "write a Rust fn that reverses a string"     # deepseek
+cotrex orchestrator "build the release artifacts"         # nemotron-ultra
 # also: router (nemotron-nano), assistant (qwen, default)
 ```
 
@@ -168,28 +168,28 @@ Failing commands set `status: "failed"` in the footer and propagate the underlyi
 `llm` mode a failure also gets an `insight` line (a successful command stays token-free).
 
 **Scripting (repetitive or multi-file changes).** Don't edit ten files by hand to rename a token —
-write one idempotent script under `Scripts/` and let Tokex run + verify it:
+write one idempotent script under `Scripts/` and let Cotrex run + verify it:
 
 ```bash
-tokex script                      # creates Scripts/ and prints the workflow
+cotrex script                      # creates Scripts/ and prints the workflow
 # ... write Scripts/rename.sh ...
-tokex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
+cotrex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
 ```
 
-Tokex runs the script through rtk (by extension: `.sh`/`.ps1`/`.py`), then `git diff --stat` so you
-**verify from the diff, not by re-reading files**. The agent writes the script; Tokex runs and
+Cotrex runs the script through rtk (by extension: `.sh`/`.ps1`/`.py`), then `git diff --stat` so you
+**verify from the diff, not by re-reading files**. The agent writes the script; Cotrex runs and
 verifies it. (`git diff` shows tracked edits; new files show via `git status`.)
 
 ## Install skills for your agent
 
-Tokex can install project-specific skills for your AI agent. This creates a `.tokex/` directory in
+Cotrex can install project-specific skills for your AI agent. This creates a `.cotrex/` directory in
 your project with skill files tailored for your agent:
 
 ```bash
-tokex install opencode    # install skills for OpenCode
-tokex install claude      # install skills for Claude Code
-tokex install codex       # install skills for Codex
-tokex install cursor      # install skills for Cursor
+cotrex install opencode    # install skills for OpenCode
+cotrex install claude      # install skills for Claude Code
+cotrex install codex       # install skills for Codex
+cotrex install cursor      # install skills for Cursor
 ```
 
 Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`, `aider`,
@@ -197,18 +197,18 @@ Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`,
 
 The installed skills include:
 - **graphify** - Knowledge graph generation from code/docs
-- **tokex-run** - Run commands through RTK with normalized output
-- **tokex-tree** - Show project structure as a tree
+- **cotrex-run** - Run commands through RTK with normalized output
+- **cotrex-tree** - Show project structure as a tree
 
-Skills are installed in `.tokex/skills/` and are automatically detected by your agent when
+Skills are installed in `.cotrex/skills/` and are automatically detected by your agent when
 working in this project directory.
 
 ## Setup (provider, API key, modes)
 
-Configure Tokex *after* install with one interactive command — no file editing:
+Configure Cotrex *after* install with one interactive command — no file editing:
 
 ```bash
-tokex setup
+cotrex setup
 ```
 
 It prompts for:
@@ -217,24 +217,24 @@ It prompts for:
 - **Compression** — `heuristic` (rtk filter, default) · `llm` (rtk + AI insight) · `off` (raw).
 - **RTK output** — `normal` or `ultra-compact`.
 
-Settings are written to your OS config dir (`%APPDATA%\tokex\config.toml` on Windows,
-`~/.config/tokex/config.toml` on Linux) — never to the repo. `TOKEX_LLM_URL`/`_KEY`/`_MODEL` env
-vars override the file for CI/power use. `tokex run --llm …` forces the insight on for one run
+Settings are written to your OS config dir (`%APPDATA%\cotrex\config.toml` on Windows,
+`~/.config/cotrex/config.toml` on Linux) — never to the repo. `COTREX_LLM_URL`/`_KEY`/`_MODEL` env
+vars override the file for CI/power use. `cotrex run --llm …` forces the insight on for one run
 regardless of the configured mode.
 
 ## MCP server
 
-Agents that speak MCP can call Tokex natively instead of shelling out. Tokex runs as an MCP server
+Agents that speak MCP can call Cotrex natively instead of shelling out. Cotrex runs as an MCP server
 over stdio and exposes a `run` tool that returns structured execution events.
 
 ```bash
-tokex mcp        # JSON-RPC 2.0 over stdio
+cotrex mcp        # JSON-RPC 2.0 over stdio
 ```
 
 Register it with Claude Code:
 
 ```bash
-claude mcp add tokex -- /absolute/path/to/tokex mcp
+claude mcp add cotrex -- /absolute/path/to/cotrex mcp
 ```
 
 The `run` tool takes `{ "command": "cargo test", "llm": false }` and returns the normalized event
@@ -255,8 +255,8 @@ See [CLAUDE.md](CLAUDE.md) for architecture and contributor rules.
 
 Deliberately out of scope for v1 — added when there's a consumer that needs them:
 
-- **Persisted execution graph** — command/dependency/failure trace of tokex runs themselves.
-- **Single self-contained binary** — build `vendor/rtk` in a cargo workspace and have Tokex use the
+- **Persisted execution graph** — command/dependency/failure trace of cotrex runs themselves.
+- **Single self-contained binary** — build `vendor/rtk` in a cargo workspace and have Cotrex use the
   vendored binary instead of requiring `rtk` on `PATH`, so there's nothing to install separately.
 
 ## License

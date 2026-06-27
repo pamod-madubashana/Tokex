@@ -22,13 +22,13 @@ One pipeline, four stages, shared by every front-end (CLI, stdin-JSON, MCP).
 
 Machine output on **stdout** is the rtk output lines **verbatim**, terminated by a single
 `{"type":"result", …}` footer (plus an `{"type":"insight", …}` line when a failure was analyzed).
-Per-line JSON wrapping would cost more tokens than the raw command Tokex is meant to compress. The
+Per-line JSON wrapping would cost more tokens than the raw command Cotrex is meant to compress. The
 human-readable summary goes to **stderr** — human text never lands on stdout. (In MCP mode the
 machine channel is captured into the tool result instead, keeping stdout free for JSON-RPC.)
 
 ## Modes
 
-Set via [`tokex setup`](setup), applied per run:
+Set via [`cotrex setup`](setup), applied per run:
 
 - **compression**: `off` (raw `rtk run -c`) · `heuristic` (filtered) · `llm` (filtered + AI insight
   on failures only — a successful command stays token-free).
@@ -36,24 +36,24 @@ Set via [`tokex setup`](setup), applied per run:
 
 ## Invariants
 
-- **Tokex never bypasses RTK.** New tool support is a new entry in `RTK_NATIVE` or a new rtk
+- **Cotrex never bypasses RTK.** New tool support is a new entry in `RTK_NATIVE` or a new rtk
   subcommand — never a direct `Command::new("cargo")`.
 - **stdout is machine-only** (JSON-RPC in MCP mode).
-- The 2-threads + mpsc model is deliberate; async only if Tokex ever multiplexes many concurrent
+- The 2-threads + mpsc model is deliberate; async only if Cotrex ever multiplexes many concurrent
   executions.
 
 ## graphify code map
 
-tokex keeps a [graphify](https://github.com/safishamsi/graphify) code map fresh so agents only
+cotrex keeps a [graphify](https://github.com/safishamsi/graphify) code map fresh so agents only
 **read** it (`graphify-out/`) instead of spending turns updating it. After a code-changing
-`tokex run`, tokex fires a background `graphify update .` (Python, AST-only — no token cost);
+`cotrex run`, cotrex fires a background `graphify update .` (Python, AST-only — no token cost);
 read-only commands skip it. The one-time setup runs detached so it never blocks a command: it
 auto-installs graphifyy and registers the graphify skill **for the agent you actually use** —
-resolved from config, env auto-detect (Claude), or by asking you — then builds the map. `tokex setup`
-runs this bootstrap up front; `tokex graph` forces a refresh. Toggle with `graph_auto` in
+resolved from config, env auto-detect (Claude), or by asking you — then builds the map. `cotrex setup`
+runs this bootstrap up front; `cotrex graph` forces a refresh. Toggle with `graph_auto` in
 [Setup](setup).
 
 ## Vendored dependencies
 
-`rtk` and `graphify` are pinned git submodules under `vendor/`. `cargo build` builds `tokex` and
+`rtk` and `graphify` are pinned git submodules under `vendor/`. `cargo build` builds `cotrex` and
 `rtk` together via workspace `default-members`, so they ship as one unit.

@@ -1,10 +1,10 @@
-//! graphify integration: tokex keeps the code map fresh so agents only **read** it
+//! graphify integration: cotrex keeps the code map fresh so agents only **read** it
 //! (`graphify-out/GRAPH_REPORT.md`, `graphify-out/wiki/`) and never spend a turn updating it.
 //!
 //! graphify is a Python tool (`pip install graphifyy`, run via `python -m graphify ...`, AST-only —
-//! no token cost). tokex auto-installs it once and **registers its skill for the agent actually in
+//! no token cost). cotrex auto-installs it once and **registers its skill for the agent actually in
 //! use** (not just Claude): resolved from config, else env auto-detect, else by asking the user.
-//! Everything here is best-effort: it never blocks or fails a tokex run.
+//! Everything here is best-effort: it never blocks or fails a cotrex run.
 
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -60,7 +60,7 @@ fn run_quiet(prog: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
-/// Run inheriting this process's stdio (visible under `tokex graph`/`tokex setup`, silent when the
+/// Run inheriting this process's stdio (visible under `cotrex graph`/`cotrex setup`, silent when the
 /// bootstrap runs detached with null stdio).
 fn run_inherit(prog: &str, args: &[&str]) -> bool {
     Command::new(prog)
@@ -82,7 +82,7 @@ fn run_capture(prog: &str, args: &[&str]) -> bool {
 }
 
 fn data_file(name: &str) -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("tokex").join(name))
+    dirs::data_dir().map(|d| d.join("cotrex").join(name))
 }
 
 fn exists(p: Option<PathBuf>) -> bool {
@@ -127,7 +127,7 @@ fn ensure_package(py: &str, verbose: bool) -> bool {
     let mut importable = run_quiet(py, &["-c", "import graphify"]);
     if !importable {
         if verbose {
-            eprintln!("tokex: installing graphifyy (one-time) …");
+            eprintln!("cotrex: installing graphifyy (one-time) …");
         }
         importable = run_quiet(py, &["-m", "pip", "install", "--quiet", "graphifyy"])
             && run_quiet(py, &["-c", "import graphify"]);
@@ -181,14 +181,14 @@ fn register_skill(py: &str, verbose: bool, prompt_when_unknown: bool) {
                 }
             } else {
                 if verbose {
-                    eprintln!("tokex: couldn't detect your agent — run `tokex setup` (or `tokex graph` in a terminal) to register the graphify skill for it.");
+                    eprintln!("cotrex: couldn't detect your agent — run `cotrex setup` (or `cotrex graph` in a terminal) to register the graphify skill for it.");
                 }
                 return;
             }
         }
     };
     if verbose {
-        eprintln!("tokex: registering graphify skill for '{platform}' …");
+        eprintln!("cotrex: registering graphify skill for '{platform}' …");
     }
     // graphify's CLI is inconsistent: some platforms use `--platform`, others a subcommand. Claude
     // is the bare default. Try the most likely form, then fall back.
@@ -205,7 +205,7 @@ fn register_skill(py: &str, verbose: bool, prompt_when_unknown: bool) {
 
 /// Best-effort refresh after a code-changing run — never blocks the run. If set up, fire a cheap
 /// incremental update in the background; if not, run the one-time bootstrap detached (via
-/// `tokex graph`) so install + skill-register + first build never stall the command.
+/// `cotrex graph`) so install + skill-register + first build never stall the command.
 /// ponytail: no lock — a rare double-bootstrap is idempotent.
 pub fn auto_update(command: &str) {
     if !touches_code(command) {
@@ -225,7 +225,7 @@ pub fn auto_update(command: &str) {
     }
 }
 
-/// Run the one-time bootstrap (`tokex graph`) detached, with no stdio — safe to call from MCP mode
+/// Run the one-time bootstrap (`cotrex graph`) detached, with no stdio — safe to call from MCP mode
 /// where stdout is the JSON-RPC channel.
 pub fn bootstrap_detached() {
     if let Ok(exe) = std::env::current_exe() {
@@ -245,7 +245,7 @@ pub fn clear_skill_marker() {
     }
 }
 
-/// `tokex graph` and the post-`setup` bootstrap: install the package, register the skill for the
+/// `cotrex graph` and the post-`setup` bootstrap: install the package, register the skill for the
 /// agent, and refresh the map. Blocking, with visible output.
 pub fn update_blocking() -> Result<(), String> {
     update_blocking_with_prompt(true, true)
@@ -303,7 +303,7 @@ fn update_blocking_with_prompt(prompt_when_unknown: bool, verbose: bool) -> Resu
     }
     register_skill(py, verbose, prompt_when_unknown);
     if verbose {
-        eprintln!("tokex: refreshing graphify code map in {}", cwd.display());
+        eprintln!("cotrex: refreshing graphify code map in {}", cwd.display());
     }
     if run_inherit(py, &["-m", "graphify", "update", "."]) {
         Ok(())
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn project_markers_gate_graphify_updates() {
-        let root = std::env::temp_dir().join(format!("tokex-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("cotrex-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         assert!(!is_project_dir(&root));

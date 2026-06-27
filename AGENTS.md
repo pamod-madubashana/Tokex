@@ -4,19 +4,19 @@ Guidance for agentic coding agents working in this repository.
 
 ## Agent Rules (MUST follow)
 
-- **Connect to tokex via MCP.** Tokex exposes a JSON-RPC 2.0 stdio MCP server with tools
+- **Connect to cotrex via MCP.** Cotrex exposes a JSON-RPC 2.0 stdio MCP server with tools
   (`run`, `delegate`, `plan`, `list_roles`, `set_agent`). Use the `run` tool to execute commands.
-- **If MCP is not available**, fall back to CLI: `tokex -m <command>` (e.g. `tokex -m cargo build`).
-- **If tokex is not on PATH**, fall back to `rtk <command>` directly. Raw shell commands are
+- **If MCP is not available**, fall back to CLI: `cotrex -m <command>` (e.g. `cotrex -m cargo build`).
+- **If cotrex is not on PATH**, fall back to `rtk <command>` directly. Raw shell commands are
   a last resort — they lose the normalization pipeline.
-- **Never bypass the pipeline.** Tokex normalizes output for agents — raw commands lose that.
+- **Never bypass the pipeline.** Cotrex normalizes output for agents — raw commands lose that.
 
 ## MCP Server
 
-Start tokex as an MCP server: `tokex mcp`
+Start cotrex as an MCP server: `cotrex mcp`
 
 Communicates over stdin/stdout using newline-delimited JSON-RPC 2.0. The agent sends requests,
-tokex responds with structured tool results.
+cotrex responds with structured tool results.
 
 ### Available Tools
 
@@ -34,7 +34,7 @@ tokex responds with structured tool results.
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```
@@ -43,7 +43,7 @@ tokex responds with structured tool results.
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```
@@ -52,7 +52,7 @@ tokex responds with structured tool results.
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```
@@ -61,7 +61,7 @@ tokex responds with structured tool results.
 ```json
 {
   "mcpServers": {
-    "tokex": { "command": "tokex", "args": ["mcp"] }
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
   }
 }
 ```
@@ -70,7 +70,7 @@ tokex responds with structured tool results.
 
 ```json
 → {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"tokex","version":"1.2.0"}}}
+← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"cotrex","version":"1.2.0"}}}
 
 → {"jsonrpc":"2.0","method":"notifications/initialized"}
   (no response — notification)
@@ -85,36 +85,36 @@ tokex responds with structured tool results.
 ## CLI Fallback (when MCP is unavailable)
 
 ```bash
-tokex -m cargo build                       # build (must be warning-clean before committing)
-tokex -m cargo test                        # all tests
-tokex -m cargo test native_command_maps    # run a single test by name (substring match)
-tokex -m cargo test -p tokex               # CI-style: test only our crate, not vendored rtk
-tokex -m cargo run -- run "git status"     # forward a command through rtk
-tokex -m cargo run -- git status           # same — run subcommand optional
-tokex -m script Scripts/rename.sh          # run a script via rtk
-tokex -m update                            # check for newer release and install if available
+cotrex -m cargo build                       # build (must be warning-clean before committing)
+cotrex -m cargo test                        # all tests
+cotrex -m cargo test native_command_maps    # run a single test by name (substring match)
+cotrex -m cargo test -p cotrex               # CI-style: test only our crate, not vendored rtk
+cotrex -m cargo run -- run "git status"     # forward a command through rtk
+cotrex -m cargo run -- git status           # same — run subcommand optional
+cotrex -m script Scripts/rename.sh          # run a script via rtk
+cotrex -m update                            # check for newer release and install if available
 ```
 
 ## What this is
 
-Tokex is a **deterministic RTK orchestration layer** written in Rust. It normalizes agent intent and
-stream output **without owning execution**. RTK (`rtk`) is bundled next to the tokex binary;
+Cotrex is a **deterministic RTK orchestration layer** written in Rust. It normalizes agent intent and
+stream output **without owning execution**. RTK (`rtk`) is bundled next to the cotrex binary;
 no separate install needed.
 
 ## Build & Test Commands
 
 ```bash
-tokex -m cargo build                       # build (must be warning-clean before committing)
-tokex -m cargo test                        # all tests
-tokex -m cargo test -p tokex               # CI-style: test only our crate, not vendored rtk
+cotrex -m cargo build                       # build (must be warning-clean before committing)
+cotrex -m cargo test                        # all tests
+cotrex -m cargo test -p cotrex               # CI-style: test only our crate, not vendored rtk
 ```
 
-**CI** (`.github/workflows/ci.yml`): runs `cargo test -p tokex` on ubuntu-latest with
+**CI** (`.github/workflows/ci.yml`): runs `cargo test -p cotrex` on ubuntu-latest with
 submodules checked out. Wait for green before merging.
 
 **Dependencies**: `rtk` and `graphify` are pinned git submodules under `vendor/`; clone with
 `--recursive`. The `Cargo.toml` workspace includes `vendor/rtk` as a default member.
-`cargo build` builds both tokex and rtk into `target/release/`.
+`cargo build` builds both cotrex and rtk into `target/release/`.
 
 ## Architecture Overview
 
@@ -132,10 +132,10 @@ human reads goes to stderr. Never mix human text into stdout.
 
 ## Invariants
 
-- **Tokex never bypasses RTK.** New tool support = a new entry in `RTK_NATIVE` or a new rtk
+- **Cotrex never bypasses RTK.** New tool support = a new entry in `RTK_NATIVE` or a new rtk
   subcommand, not a direct `Command::new("cargo")`.
 - **Keep it sync.** The 2-threads+mpsc model is deliberate.
-- **Never add async** unless Tokex ever multiplexes many concurrent execs.
+- **Never add async** unless Cotrex ever multiplexes many concurrent execs.
 
 ## Code Style
 
@@ -200,10 +200,10 @@ human reads goes to stderr. Never mix human text into stdout.
 - **Never push to `main`.** Every change ships through a PR:
   1. Branch off `main` with a descriptive name.
   2. Commit each logical change immediately.
-  3. `tokex -m gh pr create` to open a PR.
+  3. `cotrex -m gh pr create` to open a PR.
   4. Wait for CI to pass before merging.
-  5. `tokex -m gh pr merge --squash --delete-branch`.
-  6. `tokex -m git checkout main && git pull`, delete the local branch.
+  5. `cotrex -m gh pr merge --squash --delete-branch`.
+  6. `cotrex -m git checkout main && git pull`, delete the local branch.
 
 ## Module Map
 
@@ -215,14 +215,14 @@ human reads goes to stderr. Never mix human text into stdout.
 | `src/core/intent.rs` | Normalize CLI/JSON to `Intent`; map to rtk args via `RTK_NATIVE` |
 | `src/core/orchestrate.rs` | Spawn rtk, read pipes on 2 threads, write normalized events |
 | `src/core/normalize.rs` | Classify output lines by severity (error/warning/info) |
-| `src/config/settings.rs` | Persistent config in OS config dir; `tokex -m setup` flow |
+| `src/config/settings.rs` | Persistent config in OS config dir; `cotrex -m setup` flow |
 | `src/config/install.rs` | Download + extract pinned rtk release for current platform |
-| `src/config/install_agent.rs` | Install tokex skills into agent-specific directories |
+| `src/config/install_agent.rs` | Install cotrex skills into agent-specific directories |
 | `src/config/update.rs` | Self-update: check GitHub release, download+install if newer |
 | `src/llm/compress.rs` | Optional LLM compression — POST output, get structured insight |
 | `src/llm/mcp.rs` | JSON-RPC 2.0 stdio MCP server (sync, no tokio) |
 | `src/agent/prompt.rs` | Agentic task loop — model decides run-vs-answer, step loop |
 | `src/agent/tool.rs` | Minimal tool registry (read/write/edit/glob/grep) for agentic loop |
 | `src/agent/permission.rs` | Pattern-based permission rules for risky command gating |
-| `src/script/` | `tokex -m script` — run agent scripts through rtk, verify via git diff |
+| `src/script/` | `cotrex -m script` — run agent scripts through rtk, verify via git diff |
 | `src/graphify/` | Auto-refresh code map after code-changing runs |

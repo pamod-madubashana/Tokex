@@ -4,19 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Tokex is a **deterministic RTK orchestration layer**. It normalizes
+Cotrex is a **deterministic RTK orchestration layer**. It normalizes
 agent intent and stream output **without owning execution**. RTK (`rtk`, an external binary that
-must be on PATH) is the execution truth layer; Tokex never runs a raw command — it invokes
-`rtk <subcommand>` and normalizes what RTK returns. If `rtk` is not on PATH, `tokex run` fails at
+must be on PATH) is the execution truth layer; Cotrex never runs a raw command — it invokes
+`rtk <subcommand>` and normalizes what RTK returns. If `rtk` is not on PATH, `cotrex run` fails at
 spawn — that dependency is functional, not optional.
 
 ## Getting rtk
 
-`rtk_path()` (in `orchestrate.rs`) resolves rtk in order: next to the tokex binary → the data dir →
+`rtk_path()` (in `orchestrate.rs`) resolves rtk in order: next to the cotrex binary → the data dir →
 `PATH`. Three ways to provide it:
-- `tokex install-rtk` (`install.rs`) downloads the matching `rtk-ai/rtk` release for the current
+- `cotrex install-rtk` (`install.rs`) downloads the matching `rtk-ai/rtk` release for the current
   OS/arch into the data dir (extracted via system `tar`).
-- `cargo build` builds the vendored `vendor/rtk` next to tokex (workspace `default-members`).
+- `cargo build` builds the vendored `vendor/rtk` next to cotrex (workspace `default-members`).
 - a system-installed `rtk` on `PATH`.
 
 `rtk` and `graphify` are pinned git submodules under `vendor/`; clone with `--recursive`.
@@ -57,12 +57,12 @@ the raw command it's meant to compress, so don't. The human-readable summary goe
 Keep these separated by file descriptor — never mix human text into stdout.
 
 `main.rs` is dispatch only. With a first arg that isn't a subcommand: several args = a command
-(`tokex git status`), a single (quoted) arg = a prompt (`tokex "list rust projects"`, see
-`prompt.rs`). `tokex -m "…"` is the same prompt in **Model mode** (output only, for agents) vs the
+(`cotrex git status`), a single (quoted) arg = a prompt (`cotrex "list rust projects"`, see
+`prompt.rs`). `cotrex -m "…"` is the same prompt in **Model mode** (output only, for agents) vs the
 default **User mode** (spinner + live-streamed model output, for humans). Otherwise a subcommand
 (`run`/`script`/`setup`/`mcp`/…) or, with no subcommand and piped stdin, a JSON intent.
 
-**Front-ends share the core.** CLI, stdin-JSON, and the MCP server (`mcp.rs`, `tokex mcp`) all funnel
+**Front-ends share the core.** CLI, stdin-JSON, and the MCP server (`mcp.rs`, `cotrex mcp`) all funnel
 into the same `orchestrate::run`. MCP is a hand-rolled JSON-RPC 2.0 stdio server (sync, no tokio)
 exposing `run` (captures the machine channel, returns it verbatim) and `set_agent` (the model identifies
 its platform when there's no TTY — persists `config.agent` and installs the graphify skill in the
@@ -71,49 +71,49 @@ write to buffers / detached null stdio, never stdout, so nothing corrupts the pr
 
 ## Invariants
 
-- **Tokex never bypasses RTK.** New tool support = a new entry in `RTK_NATIVE` or a new rtk
+- **Cotrex never bypasses RTK.** New tool support = a new entry in `RTK_NATIVE` or a new rtk
   subcommand, not a direct `Command::new("cargo")`.
 - **stdout is machine-only.** Anything a human reads goes to stderr.
-- Keep it sync. The 2-threads+mpsc model is deliberate; reach for async only if Tokex ever
+- Keep it sync. The 2-threads+mpsc model is deliberate; reach for async only if Cotrex ever
   multiplexes many concurrent execs.
 
-## Config & modes (`tokex setup`)
+## Config & modes (`cotrex setup`)
 
-Config lives in the user's OS config dir (`config.rs`: `dirs::config_dir()/tokex/config.toml`), set
-post-install via `tokex setup` (interactive `inquire` prompts) — **not** a project `.env`.
-`config::load()` reads the file then applies `TOKEX_LLM_*` env overrides. Two modes drive execution
+Config lives in the user's OS config dir (`config.rs`: `dirs::config_dir()/cotrex/config.toml`), set
+post-install via `cotrex setup` (interactive `inquire` prompts) — **not** a project `.env`.
+`config::load()` reads the file then applies `COTREX_LLM_*` env overrides. Two modes drive execution
 (`main.rs` → `orchestrate::Options`):
 - **compression**: `off` (raw `rtk run -c`, no filter) · `heuristic` (filtered subcommand, default) ·
   `llm` (filtered + the AI insight).
 - **rtk_verbosity**: `normal` · `ultra-compact` (appends `--ultra-compact` to the rtk args).
 
-`tokex run --llm` (or JSON `"llm": true`) forces the insight on regardless of mode. LLM compression
+`cotrex run --llm` (or JSON `"llm": true`) forces the insight on regardless of mode. LLM compression
 (`llm.rs`) POSTs the captured output to an OpenAI-compatible endpoint and emits one extra
-`{"type":"insight", ...}` event. Missing key when LLM is requested = fail fast (`run tokex setup`).
+`{"type":"insight", ...}` event. Missing key when LLM is requested = fail fast (`run cotrex setup`).
 The call is best-effort: a network/parse failure prints `(llm skipped: …)` and never changes the
 exit code.
 
 ## graphify code map (`graphify.rs`)
 
-tokex keeps a graphify code map fresh so agents only **read** it (`graphify-out/GRAPH_REPORT.md`,
+cotrex keeps a graphify code map fresh so agents only **read** it (`graphify-out/GRAPH_REPORT.md`,
 `graphify-out/wiki/`) and never spend a turn updating it. graphify is a Python tool
 (`pip install graphifyy`, invoked as `python -m graphify ...`, AST-only — no token cost).
 
-After a **code-changing** `tokex run` (read-only commands like `git status` skip — see
+After a **code-changing** `cotrex run` (read-only commands like `git status` skip — see
 `touches_code`), `auto_update`:
 - if set up → fires a background `graphify update .`;
-- if not → runs the one-time bootstrap **detached** (re-spawns `tokex graph`) so it never blocks the
+- if not → runs the one-time bootstrap **detached** (re-spawns `cotrex graph`) so it never blocks the
   command.
 
 The one-time bootstrap: `ensure_package` (`pip install graphifyy`, cached via `.graphify-ok`) →
 `register_skill` (cached via `.graphify-skill`) → build the map. **Skill registration targets the
 agent actually in use**, not just Claude: `resolve_platform` reads `config.agent`, else env
 auto-detects Claude (`CLAUDECODE`), else asks the user when interactive (or leaves guidance to run
-`tokex setup`). It calls `graphify install` (claude), `graphify install --platform <p>`, or
+`cotrex setup`). It calls `graphify install` (claude), `graphify install --platform <p>`, or
 `graphify <p> install` (fallback for graphify's per-platform subcommands).
 
-`tokex setup` runs the whole bootstrap up front (the "start project" moment); `tokex graph` forces a
-blocking refresh. All best-effort — never blocks or fails a tokex run. Gated by `graph_auto`.
+`cotrex setup` runs the whole bootstrap up front (the "start project" moment); `cotrex graph` forces a
+blocking refresh. All best-effort — never blocks or fails a cotrex run. Gated by `graph_auto`.
 
 ## Prompts & categories (`prompt.rs`)
 
@@ -122,13 +122,13 @@ A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it:
   named). `prompt::fulfill` asks the model to **decide** (`DECISION_SYSTEM`): reply
   `{"run":"<cmd>"}` to gather, or `{"answer":"<text>"}` to finish. It **gathers with commands then
   SYNTHESIZES an answer** — never a raw command dump. The answer is printed (markdown→ANSI in User
-  mode). Headline path: `tokex "list all rust projects"`.
+  mode). Headline path: `cotrex "list all rust projects"`.
 - `<known-category>: text` (`Category`) or a JSON object (`Json`) → a **structured answer** using
   that category's header (`plan-stack`, `theme`, …). These aren't runnable commands.
 
-A lone word is a prompt too (`tokex "hi"` → the agent just answers), so User mode reads like a normal
-AI agent. A raw command needs args (`tokex git status`, handled in `main.rs` before classify) or
-`tokex run <cmd>`.
+A lone word is a prompt too (`cotrex "hi"` → the agent just answers), so User mode reads like a normal
+AI agent. A raw command needs args (`cotrex git status`, handled in `main.rs` before classify) or
+`cotrex run <cmd>`.
 
 `fulfill` runs a **step loop** (`MAX_STEPS`): each turn the model replies `{"run":cmd}` (run one
 command, its capped output fed back) or `{"answer":text}` (the final, **analyzed** answer). It
@@ -149,7 +149,7 @@ only the answer remains; off in Model mode / non-TTY.
 Each **category** binds a name to a *header* in the `CATEGORIES` table — **add a category by adding a
 row**. Prompts require an LLM key.
 
-**Roles** (`tokex <role> "<task>"`, e.g. `tokex planner "…"`, `tokex coder "…"`) pick a
+**Roles** (`cotrex <role> "<task>"`, e.g. `cotrex planner "…"`, `cotrex coder "…"`) pick a
 **role-specific model** for the same decide-run-or-answer flow, so a calling agent offloads work and
 just waits. The `ROLES` table binds each role to `(model id, header)` — `planner` (glm),
 `router`/`orchestrator` (nemotron nano/ultra), `coder` (deepseek), `assistant` (qwen, the default).
@@ -158,7 +158,7 @@ it's the first arg.
 
 Two modes (`prompt::Mode`): **User** (default) shows a stderr spinner until the first token, then
 streams the model's output live (thinking for reasoning models, the answer text itself for instruct
-models like the assistant); **Model** (`tokex -m "…"`, for agents) shows neither — just the output on
+models like the assistant); **Model** (`cotrex -m "…"`, for agents) shows neither — just the output on
 stdout (task exec runs with `footer:false`, human channel suppressed).
 
 A **project-structure** request (`is_structure_request`: "structure"/"tree"/"layout" + a
@@ -170,11 +170,11 @@ outside a git repo). It's a `tree`, not a question, so it needs no LLM key.
 
 **Repetitive or multi-file change? Write a script, don't edit each file.** For things like renaming
 a token across many files, the agent writes ONE idempotent script under `Scripts/` (created if
-missing) and runs `tokex script Scripts/<name>.sh`. tokex runs it through rtk (never raw — `rtk run
+missing) and runs `cotrex script Scripts/<name>.sh`. cotrex runs it through rtk (never raw — `rtk run
 -c "bash …"`, picked by extension: `.sh`/`.ps1`/`.py`), then runs `git diff --stat` so the change is
 **verified from the diff, not by re-reading files**. Exit code is the script's; success = it ran.
-tokex does not generate the script — the agent does; tokex provides the instruction, run, and verify.
-`tokex script` with no file just creates `Scripts/` and prints the workflow. (`git diff` only shows
+cotrex does not generate the script — the agent does; cotrex provides the instruction, run, and verify.
+`cotrex script` with no file just creates `Scripts/` and prints the workflow. (`git diff` only shows
 tracked modifications — new/untracked files show via `git status`.)
 
 ## Out of scope (deferred, do not add speculatively)
@@ -198,7 +198,7 @@ tracked modifications — new/untracked files show via `git status`.)
 1. Branch off `main` with a fresh, descriptive name. **Never** put "claude" in a branch name.
 2. Make changes there (real-time commits still apply — commit each logical change immediately).
 3. `gh pr create` to open a PR.
-4. **Wait for the `CI` workflow to pass** (`.github/workflows/ci.yml` builds + tests `tokex`). Do not
+4. **Wait for the `CI` workflow to pass** (`.github/workflows/ci.yml` builds + tests `cotrex`). Do not
    merge on red.
 5. Merge once green (`gh pr merge --squash --delete-branch`).
 6. Clean up and sync: `git checkout main && git pull`, and delete the local branch.

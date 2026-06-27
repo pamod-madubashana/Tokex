@@ -5,18 +5,18 @@ title: MCP Server
 
 # MCP Server
 
-Agents that speak [MCP](https://modelcontextprotocol.io) can call Tokex natively instead of shelling
-out. Tokex runs as an MCP server over stdio and exposes a `run` tool that returns structured
+Agents that speak [MCP](https://modelcontextprotocol.io) can call Cotrex natively instead of shelling
+out. Cotrex runs as an MCP server over stdio and exposes a `run` tool that returns structured
 execution events.
 
 ```bash
-tokex mcp        # JSON-RPC 2.0 over stdio
+cotrex mcp        # JSON-RPC 2.0 over stdio
 ```
 
 ## Register with Claude Code
 
 ```bash
-claude mcp add tokex -- /absolute/path/to/tokex mcp
+claude mcp add cotrex -- /absolute/path/to/cotrex mcp
 ```
 
 ## The `run` tool
@@ -34,7 +34,7 @@ Result content is the machine channel verbatim — the same as the CLI: rtk outp
 single result footer (and an `insight` line when a failure was analyzed):
 
 ```text
-Compiling tokex v0.1.0
+Compiling cotrex v0.1.0
 {"type":"result","status":"ok","code":0}
 ```
 
@@ -42,7 +42,7 @@ Compiling tokex v0.1.0
 
 ## The `set_agent` tool
 
-tokex installs a [graphify](architecture) code-map skill for the agent in use. When it can't detect
+cotrex installs a [graphify](architecture) code-map skill for the agent in use. When it can't detect
 which agent that is (no terminal to prompt, nothing in config or the environment), a `run` result
 includes a note asking the model to identify itself. The model then calls `set_agent`:
 
@@ -50,12 +50,12 @@ includes a note asking the model to identify itself. The model then calls `set_a
 { "agent": "codex" }
 ```
 
-tokex persists the platform and installs the graphify skill for it in the background. This is the
-no-TTY equivalent of the interactive agent prompt — the model tells tokex what it's running in.
+cotrex persists the platform and installs the graphify skill for it in the background. This is the
+no-TTY equivalent of the interactive agent prompt — the model tells cotrex what it's running in.
 
 ## Protocol notes
 
-Tokex implements a focused subset of MCP: `initialize`, `tools/list`, `tools/call`, and `ping`, over
+Cotrex implements a focused subset of MCP: `initialize`, `tools/list`, `tools/call`, and `ping`, over
 newline-delimited JSON-RPC 2.0 on stdio. In MCP mode **stdout is the protocol channel** — execution
 output is captured internally and only returned inside the tool result.
 

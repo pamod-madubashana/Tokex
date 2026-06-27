@@ -1,7 +1,7 @@
 //! Permission system for the agentic prompt loop.
 //!
 //! OpenCode uses pattern-based rules with wildcard matching for tool permissions.
-//! Tokex's current `is_risky` uses a substring blocklist which has false positives/negatives.
+//! Cotrex's current `is_risky` uses a substring blocklist which has false positives/negatives.
 //! This module provides a proper permission system with pattern matching.
 
 #![allow(dead_code)]

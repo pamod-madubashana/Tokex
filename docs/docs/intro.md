@@ -5,16 +5,16 @@ slug: /
 ---
 
 <p align="center">
-  <img src="/Tokex/img/tokex.png" alt="Tokex" width="180" />
+  <img src="/Cotrex/img/cotrex.png" alt="Cotrex" width="180" />
 </p>
 
-# Tokex
+# Cotrex
 
-**RTK executes. Tokex makes execution consumable by agents.**
+**RTK executes. Cotrex makes execution consumable by agents.**
 
-Tokex is a deterministic [RTK](https://github.com/rtk-ai/rtk) orchestration layer. It takes an
+Cotrex is a deterministic [RTK](https://github.com/rtk-ai/rtk) orchestration layer. It takes an
 agent's intent, forwards it to RTK — the execution truth layer — and returns a **normalized,
-dual-channel** result. Tokex never runs a raw command itself; it invokes `rtk <subcommand>` and
+dual-channel** result. Cotrex never runs a raw command itself; it invokes `rtk <subcommand>` and
 tags what RTK emits.
 
 - **Machine channel** (`stdout`): newline-delimited JSON, one event per line.
@@ -38,9 +38,9 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 ## Three front-ends, one core
 
-- **CLI** — `tokex run "cargo test"`
-- **stdin-JSON** — `echo '{"tool":"rtk","cmd":"git status"}' | tokex`
-- **MCP** — `tokex mcp` exposes a `run` tool agents call natively
+- **CLI** — `cotrex run "cargo test"`
+- **stdin-JSON** — `echo '{"tool":"rtk","cmd":"git status"}' | cotrex`
+- **MCP** — `cotrex mcp` exposes a `run` tool agents call natively
 
 All three funnel into the same execution pipeline.
 

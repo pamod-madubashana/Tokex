@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const REPO: &str = "pamod-madubashana/Tokex";
+const REPO: &str = "pamod-madubashana/Cotrex";
 
 /// Current version compiled into the binary.
 pub fn current_version() -> &'static str {
@@ -29,7 +29,7 @@ fn asset_for(os: &str, arch: &str) -> Option<(&'static str, &'static str)> {
 fn fetch_latest_tag() -> Result<String, String> {
     let url = format!("https://api.github.com/repos/{REPO}/releases/latest");
     let resp = ureq::get(&url)
-        .set("User-Agent", "tokex")
+        .set("User-Agent", "cotrex")
         .call()
         .map_err(|e| format!("failed to check latest release: {e}"))?;
     let v: serde_json::Value = resp.into_json().map_err(|e| format!("bad response: {e}"))?;
@@ -65,7 +65,7 @@ fn current_exe_path() -> Result<PathBuf, String> {
     std::env::current_exe().map_err(|e| format!("cannot locate running binary: {e}"))
 }
 
-/// Download and extract the release archive, returning the path to the tokex binary inside it.
+/// Download and extract the release archive, returning the path to the cotrex binary inside it.
 fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
     let (name, ext) = asset_for(std::env::consts::OS, std::env::consts::ARCH).ok_or_else(|| {
         format!(
@@ -74,13 +74,13 @@ fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
             std::env::consts::ARCH
         )
     })?;
-    let asset = format!("tokex-{tag}-{name}.{ext}");
+    let asset = format!("cotrex-{tag}-{name}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
     eprintln!("  downloading {asset} …");
 
     let archive = tmp.join(&asset);
     let resp = ureq::get(&url)
-        .set("User-Agent", "tokex")
+        .set("User-Agent", "cotrex")
         .call()
         .map_err(|e| format!("download failed: {e}"))?;
     let mut reader = resp.into_reader();
@@ -118,9 +118,9 @@ fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    find_bin(tmp, "tokex")
-        .or_else(|| find_bin(tmp, "tokex.exe"))
-        .ok_or("tokex binary not found in archive".into())
+    find_bin(tmp, "cotrex")
+        .or_else(|| find_bin(tmp, "cotrex.exe"))
+        .ok_or("cotrex binary not found in archive".into())
 }
 
 /// Recursively find a file named `name` under `dir`.
@@ -141,17 +141,17 @@ fn find_bin(dir: &Path, name: &str) -> Option<PathBuf> {
 /// Run the self-update check. Prints status to stderr, replaces the binary if newer.
 pub fn run() -> Result<(), String> {
     let current = current_version();
-    eprintln!("tokex {current} — checking for updates …");
+    eprintln!("cotrex {current} — checking for updates …");
 
     let tag = fetch_latest_tag()?;
     let latest = tag.strip_prefix('v').unwrap_or(&tag);
 
     if !is_newer(current, latest) {
-        eprintln!("tokex {current} is up to date.");
+        eprintln!("cotrex {current} is up to date.");
         return Ok(());
     }
 
-    eprintln!("tokex {latest} is available (current: {current}).");
+    eprintln!("cotrex {latest} is available (current: {current}).");
 
     let exe = current_exe_path()?;
 
@@ -159,7 +159,7 @@ pub fn run() -> Result<(), String> {
     let tmp = exe
         .parent()
         .ok_or("cannot determine binary directory")?
-        .join(format!("tokex-update-{}", std::process::id()));
+        .join(format!("cotrex-update-{}", std::process::id()));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
 
     let new_bin = download_release(&tag, &tmp)?;
@@ -183,7 +183,7 @@ pub fn run() -> Result<(), String> {
     let _ = fs::remove_dir_all(&tmp);
     let _ = fs::remove_file(&backup);
 
-    eprintln!("tokex updated to {latest}.");
+    eprintln!("cotrex updated to {latest}.");
     Ok(())
 }
 

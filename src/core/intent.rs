@@ -1,6 +1,6 @@
 //! Normalized agent intent + the command -> RTK invocation mapping.
 //!
-//! Both front-ends (CLI args and stdin JSON) collapse to one `Intent`. Tokex never runs a raw
+//! Both front-ends (CLI args and stdin JSON) collapse to one `Intent`. Cotrex never runs a raw
 //! command: `to_rtk_args` decides which `rtk` subcommand carries it.
 
 use serde::{Deserialize, Serialize};
