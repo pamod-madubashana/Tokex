@@ -2,11 +2,19 @@
 
 Guidance for agentic coding agents working in this repository.
 
+## Agent Rules (MUST follow)
+
+- **Always use `tokex` to run commands.** Never run `cargo`, `git`, `npm`, etc. directly.
+  Use `tokex <command>` (e.g. `tokex cargo build`, `tokex git status`).
+- **If `tokex` is not on PATH or fails to spawn**, fall back to running `rtk <command>`
+  directly (rtk is bundled next to tokex). Only use raw shell commands as a last resort.
+- **Never bypass the pipeline.** Tokex normalizes output for agents — raw commands lose that.
+
 ## What this is
 
 Tokex is a **deterministic RTK orchestration layer** written in Rust. It normalizes agent intent and
-stream output **without owning execution**. RTK (`rtk`, an external binary) is the execution truth
-layer; Tokex never runs a raw command directly.
+stream output **without owning execution**. RTK (`rtk`) is bundled next to the tokex binary;
+no separate install needed.
 
 ## Build & Test Commands
 
@@ -20,6 +28,7 @@ tokex cargo run -- git status           # same — run subcommand optional (seve
 tokex echo '{"tool":"rtk","cmd":"cargo --version"}' | cargo run --   # stdin-JSON mode
 tokex cargo run -- "plan-stack: music player app"                    # category prompt
 tokex cargo run -- script Scripts/rename.sh                          # run a script via rtk
+tokex update                            # check for newer release and install if available
 ```
 
 **CI** (`.github/workflows/ci.yml`): runs `cargo test -p tokex` on ubuntu-latest with
@@ -27,6 +36,7 @@ submodules checked out. Wait for green before merging.
 
 **Dependencies**: `rtk` and `graphify` are pinned git submodules under `vendor/`; clone with
 `--recursive`. The `Cargo.toml` workspace includes `vendor/rtk` as a default member.
+`cargo build` builds both tokex and rtk into `target/release/`.
 
 ## Architecture Overview
 
@@ -112,10 +122,10 @@ human reads goes to stderr. Never mix human text into stdout.
 - **Never push to `main`.** Every change ships through a PR:
   1. Branch off `main` with a descriptive name.
   2. Commit each logical change immediately.
-  3. `gh pr create` to open a PR.
+  3. `tokex gh pr create` to open a PR.
   4. Wait for CI to pass before merging.
-  5. `gh pr merge --squash --delete-branch`.
-  6. `git checkout main && git pull`, delete the local branch.
+  5. `tokex gh pr merge --squash --delete-branch`.
+  6. `tokex git checkout main && git pull`, delete the local branch.
 
 ## Module Map
 
@@ -135,3 +145,4 @@ human reads goes to stderr. Never mix human text into stdout.
 | `graphify.rs` | Auto-refresh code map after code-changing runs |
 | `install.rs` | Download + extract pinned rtk release for current platform |
 | `install_agent.rs` | Install tokex skills into agent-specific directories |
+| `update.rs` | Self-update: check GitHub release, download+install if newer |
