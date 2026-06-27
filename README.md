@@ -55,6 +55,17 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 Cotrex ships as a **single binary** — RTK is embedded inside it. No separate installation needed.
 
+### Install with your agent
+
+Paste this to Claude Code / Cursor / Codex:
+
+```text
+Download and run the Cotrex install script for my platform:
+- macOS/Linux: curl -sL https://raw.githubusercontent.com/pamod-madubashana/Cotrex/main/Scripts/install.sh | bash
+- Windows PowerShell: irm https://raw.githubusercontent.com/pamod-madubashana/Cotrex/main/Scripts/install.ps1 | iex
+Then confirm with `cotrex --version`.
+```
+
 ### Quick install (recommended)
 
 Run the install script for your platform:
