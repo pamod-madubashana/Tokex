@@ -51,15 +51,16 @@ const tui: TuiPlugin = async (api) => {
         usageVersion()
 
         const usage = readUsage()
-        if (!usage || usage.total_runs === 0) return null
+        const runs = usage?.total_runs ?? 0
+        const tokens = usage?.total_tokens_out ?? 0
 
         const theme = api.theme.current
 
         return (
           <box flexDirection="column">
             <text style={{ fg: theme.text }}>Cotrex</text>
-            <text style={{ fg: theme.textMuted }}>{formatNum(usage.total_runs)} runs</text>
-            <text style={{ fg: theme.textMuted }}>{formatNum(usage.total_tokens_out)} tokens saved</text>
+            <text style={{ fg: theme.textMuted }}>{formatNum(runs)} runs</text>
+            <text style={{ fg: theme.textMuted }}>{formatNum(tokens)} tokens saved</text>
           </box>
         )
       },

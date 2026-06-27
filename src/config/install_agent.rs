@@ -126,8 +126,8 @@ var tui = async (api) => {
       sidebar_content: (_ctx, _props) => {
         usageVersion();
         const usage = readUsage();
-        if (!usage || usage.total_runs === 0)
-          return null;
+        const runs = usage?.total_runs ?? 0;
+        const tokens = usage?.total_tokens_out ?? 0;
         const theme = api.theme.current;
         return (() => {
           var _el$ = _$createElement("box"), _el$2 = _$createElement("text"), _el$4 = _$createElement("text"), _el$5 = _$createTextNode(` runs`), _el$6 = _$createElement("text"), _el$7 = _$createTextNode(` tokens saved`);
@@ -137,9 +137,9 @@ var tui = async (api) => {
           _$setProp(_el$, "flexDirection", "column");
           _$insertNode(_el$2, _$createTextNode(`Cotrex`));
           _$insertNode(_el$4, _el$5);
-          _$insert(_el$4, () => formatNum(usage.total_runs), _el$5);
+          _$insert(_el$4, () => formatNum(runs), _el$5);
           _$insertNode(_el$6, _el$7);
-          _$insert(_el$6, () => formatNum(usage.total_tokens_out), _el$7);
+          _$insert(_el$6, () => formatNum(tokens), _el$7);
           _$effect((_p$) => {
             var _v$ = {
               fg: theme.text
