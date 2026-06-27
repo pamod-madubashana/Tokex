@@ -329,6 +329,8 @@ fn tool_run(params: &Value, cfg: &Config) -> Value {
             crate::usage::record(&intent.command, input_bytes, output_bytes, code, "mcp");
             let usage_footer =
                 crate::usage::footer(&intent.command, input_bytes, output_bytes, code);
+            let tokens_in = input_bytes / 4;
+            let tokens_out = output_bytes / 4;
             let mut content = vec![
                 json!({"type": "text", "text": text}),
                 json!({"type": "text", "text": usage_footer}),
@@ -336,7 +338,19 @@ fn tool_run(params: &Value, cfg: &Config) -> Value {
             if cfg.graph_auto && crate::graphify::current_agent().is_none() {
                 content.push(json!({"type": "text", "text": "note: cotrex couldn't detect your agent, so the graphify code-map skill isn't installed. Call the set_agent tool with your platform id (e.g. claude, codex, cursor, gemini) to enable it."}));
             }
-            json!({"content": content, "isError": code != 0})
+            json!({
+                "content": content,
+                "isError": code != 0,
+                "usage": {
+                    "command": intent.command,
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "input_bytes": input_bytes,
+                    "output_bytes": output_bytes,
+                    "exit_code": code,
+                    "status": if code == 0 { "ok" } else { "failed" },
+                }
+            })
         }
         Err(e) => tool_error(e),
     }

@@ -147,7 +147,7 @@ description: "Cotrex RTK orchestration skills for {project_name}. Run commands, 
 
 ## 1. MCP (preferred)
 
-Connect to cotrex as an MCP server. This gives you tools: `run`, `delegate`, `plan`, `list_roles`, `set_agent`.
+Connect to cotrex as an MCP server. This gives you tools: `run`, `delegate`, `plan`, `list_roles`, `set_agent`, `usage`.
 
 **Setup** — {mcp_config}
 
@@ -157,6 +157,15 @@ run(command="cargo test")
 run(command="git status")
 run(command="npm install")
 ```
+
+Every `run` result includes a `usage` JSON object with token counts:
+```json
+"usage": {{"command": "cargo test", "tokens_in": 12, "tokens_out": 50, "exit_code": 0}}
+```
+
+**Show token savings to the user.** After each command, briefly mention the token stats:
+- "Ran `cargo test` — 12 tokens in, 50 tokens out"
+- Use the `usage` tool to show cumulative totals at any time.
 
 Delegation and planning:
 ```
