@@ -35,11 +35,20 @@ fn on_path() -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve rtk. Order: next to our own binary → cotrex data dir → PATH → download the pinned
-/// release. When built via the workspace, rtk is compiled to the same directory as cotrex,
-/// so the first check almost always succeeds.
+/// Resolve rtk. Order: embedded → next to our own binary → cotrex data dir → PATH → download
+/// the pinned release. When built via the workspace, rtk is compiled to the same directory as
+/// cotrex, so the second check almost always succeeds.
 pub fn ensure_rtk() -> Result<PathBuf, String> {
+    // 1. Try embedded RTK binary (extracted from cotrex executable)
+    if let Some(path) = crate::config::embedded::extract_rtk() {
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+
     let name = rtk_bin_name();
+
+    // 2. Next to our own binary (workspace build)
     if let Ok(exe) = std::env::current_exe() {
         if let Some(c) = exe.parent().map(|d| d.join(name)) {
             if c.is_file() {
@@ -47,14 +56,20 @@ pub fn ensure_rtk() -> Result<PathBuf, String> {
             }
         }
     }
+
+    // 3. Previously downloaded to data dir
     if let Some(c) = rtk_install_path() {
         if c.is_file() {
             return Ok(c);
         }
     }
+
+    // 4. On PATH
     if on_path() {
         return Ok(PathBuf::from("rtk"));
     }
+
+    // 5. Download the pinned release
     eprintln!("rtk not found — downloading it …");
     install()
 }
