@@ -163,6 +163,14 @@ pub fn role(name: &str) -> Option<(&'static str, &'static str, &'static str, usi
         .map(|(_, m, h, mode, steps)| (*m, *h, *mode, *steps))
 }
 
+/// Return all available roles as `(name, model, description)` tuples.
+pub fn roles_list() -> Vec<(&'static str, &'static str, &'static str)> {
+    ROLES
+        .iter()
+        .map(|(name, model, desc, _, _)| (*name, *model, *desc))
+        .collect()
+}
+
 /// Build an `LlmConfig` that reuses the configured endpoint + key but swaps in `model`.
 pub fn with_model(base: &LlmConfig, model: &str) -> LlmConfig {
     LlmConfig {
@@ -435,6 +443,80 @@ git); never PowerShell or cmd syntax."
         print_answer(&text, mode);
     }
     Ok(0)
+}
+
+/// Like `fulfill()` but returns the answer text instead of printing it. Used by MCP tools where
+/// the result needs to go back as tool content, not to stdout/stderr.
+pub fn fulfill_and_capture(
+    task: &str,
+    cfg: &LlmConfig,
+    role_header: Option<&str>,
+    opts: &Options,
+    max_steps: usize,
+) -> Result<String, String> {
+    let shell = if cfg!(windows) {
+        "Any command runs in Windows PowerShell — use PowerShell cmdlets and syntax (Get-ChildItem, \
+        Select-String, Measure-Object, Select-Object, Where-Object). Do NOT use bash/POSIX tools (no sed, \
+        awk, grep, or `find` with -printf)."
+    } else {
+        "Any command runs in a POSIX bash shell — use POSIX tools (find, grep, sed, awk, wc, ls, \
+        git); never PowerShell or cmd syntax."
+    };
+    let system = match role_header {
+        Some(h) => format!("{h}\n\n{DECISION_SYSTEM} {shell}"),
+        None => format!("{DECISION_SYSTEM} {shell}"),
+    };
+
+    let mut transcript = String::new();
+    let mut seen: Vec<String> = Vec::new();
+    let mut failed: Vec<(String, String)> = Vec::new();
+    for step in 0..max_steps {
+        let user = if transcript.is_empty() {
+            task.to_string()
+        } else {
+            let fix_hint = if let Some((_last_cmd, last_err)) = failed.last() {
+                format!("\nThe last command failed: {last_err}\nTry a different approach to avoid the same error.")
+            } else {
+                String::new()
+            };
+            format!("Request: {task}\n\nCommands run so far:\n{transcript}{fix_hint}\nGather more if needed, else answer.")
+        };
+        match parse_decision(&one_call(cfg, &system, &user, Mode::Model, false)?) {
+            Decision::Answer(text) => {
+                return Ok(text);
+            }
+            Decision::Run { cmd, .. } if seen.contains(&cmd) => {
+                if failed.iter().any(|(c, _)| *c == cmd) && step < max_steps - 1 {
+                    transcript.push_str(&format!(
+                        "$ {cmd}\n(already failed — try a different command)\n\n"
+                    ));
+                    continue;
+                }
+                break;
+            }
+            Decision::Run { cmd, .. } => {
+                seen.push(cmd.clone());
+                let (code, out) = exec_capture(&cmd, opts, Mode::Model)?;
+                if code != 0 {
+                    failed.push((cmd.clone(), format!("exit {code}: {}", trunc(&out, 200))));
+                }
+                transcript.push_str(&format!(
+                    "$ {cmd}\n(exit {code})\n{}\n\n",
+                    trunc(&out, 1500)
+                ));
+            }
+        }
+    }
+    // Out of steps: force a final answer.
+    let user = format!(
+        "Request: {task}\n\nCommands run so far:\n{transcript}\nGive your final answer now as {{\"answer\":\"...\"}}."
+    );
+    if let Decision::Answer(text) =
+        parse_decision(&one_call(cfg, &system, &user, Mode::Model, false)?)
+    {
+        return Ok(text);
+    }
+    Ok("No answer produced.".to_string())
 }
 
 /// Show the model's one-line narration of a step ("Let me check the routes.") to a human, in User

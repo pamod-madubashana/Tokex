@@ -105,6 +105,36 @@ fn tools_list() -> Value {
             },
             "required": ["agent"],
         },
+    }, {
+        "name": "list_roles",
+        "description": "List all available roles (planner, coder, assistant, etc.) with their \
+    models and capabilities. Use this to see what roles are available before delegating tasks.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    }, {
+        "name": "delegate",
+        "description": "Delegate a task to a specific role. The role's model will run commands to \
+    gather info and return an analyzed answer. Use list_roles to see available roles.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "The task to delegate, e.g. \"analyze the project structure\""},
+                "role": {"type": "string", "description": "Role name (default: assistant). Options: planner, router, orchestrator, coder, assistant"},
+            },
+            "required": ["task"],
+        },
+    }, {
+        "name": "plan",
+        "description": "Create an ordered plan for a task. Shorthand for delegate with the planner role.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task": {"type": "string", "description": "The task to plan, e.g. \"build a music player app\""},
+            },
+            "required": ["task"],
+        },
     }]})
 }
 
@@ -113,6 +143,9 @@ fn tools_call(params: &Value, cfg: &Config) -> Value {
     match params.get("name").and_then(Value::as_str).unwrap_or("") {
         "run" => tool_run(params, cfg),
         "set_agent" => tool_set_agent(params),
+        "list_roles" => tool_list_roles(),
+        "delegate" => tool_delegate(params, cfg),
+        "plan" => tool_plan(params, cfg),
         other => tool_error(format!("unknown tool: {other}")),
     }
 }
@@ -141,6 +174,106 @@ fn tool_set_agent(params: &Value) -> Value {
         "content": [{"type": "text", "text": format!("Agent set to '{agent}'. Installing the graphify skill for it in the background.")}],
         "isError": false,
     })
+}
+
+/// `list_roles`: return all available roles with their models and capabilities.
+fn tool_list_roles() -> Value {
+    let roles = crate::prompt::roles_list();
+    let items: Vec<Value> = roles
+        .iter()
+        .map(|(name, model, desc)| {
+            json!({
+                "name": name,
+                "model": model,
+                "description": desc,
+            })
+        })
+        .collect();
+    json!({
+        "content": [{"type": "text", "text": serde_json::to_string_pretty(&items).unwrap_or_default()}],
+        "isError": false,
+    })
+}
+
+/// `delegate`: invoke a role with a task and return the answer.
+fn tool_delegate(params: &Value, cfg: &Config) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let task = args
+        .get("task")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if task.is_empty() {
+        return tool_error("missing required argument 'task'".into());
+    }
+    let role_name = args
+        .get("role")
+        .and_then(Value::as_str)
+        .unwrap_or("assistant")
+        .trim();
+
+    let Some((model, header, _mode, max_steps)) = crate::prompt::role(role_name) else {
+        return tool_error(format!("unknown role: {role_name}"));
+    };
+
+    let llm_cfg = match LlmConfig::from_config(cfg) {
+        Some(c) => crate::prompt::with_model(&c, model),
+        None => return tool_error("LLM not configured — run `tokex setup` first".into()),
+    };
+
+    let opts = Options {
+        raw: cfg.compression == "off",
+        ultra_compact: cfg.rtk_verbosity == "ultra-compact",
+        llm_on_failure: cfg.compression == "llm",
+        footer: false,
+    };
+
+    match crate::prompt::fulfill_and_capture(&task, &llm_cfg, Some(header), &opts, max_steps) {
+        Ok(answer) => json!({
+            "content": [{"type": "text", "text": answer}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
+}
+
+/// `plan`: shorthand for delegate with the planner role.
+fn tool_plan(params: &Value, cfg: &Config) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let task = args
+        .get("task")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if task.is_empty() {
+        return tool_error("missing required argument 'task'".into());
+    }
+
+    let Some((model, header, _mode, max_steps)) = crate::prompt::role("planner") else {
+        return tool_error("planner role not found".into());
+    };
+
+    let llm_cfg = match LlmConfig::from_config(cfg) {
+        Some(c) => crate::prompt::with_model(&c, model),
+        None => return tool_error("LLM not configured — run `tokex setup` first".into()),
+    };
+
+    let opts = Options {
+        raw: cfg.compression == "off",
+        ultra_compact: cfg.rtk_verbosity == "ultra-compact",
+        llm_on_failure: cfg.compression == "llm",
+        footer: false,
+    };
+
+    match crate::prompt::fulfill_and_capture(&task, &llm_cfg, Some(header), &opts, max_steps) {
+        Ok(answer) => json!({
+            "content": [{"type": "text", "text": answer}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
 }
 
 /// Execute the `run` tool via the shared core, returning MCP tool-result content.

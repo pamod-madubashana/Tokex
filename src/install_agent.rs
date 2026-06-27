@@ -114,6 +114,22 @@ tokex -m "explain the architecture"
 tokex -m "install requirements and init"
 ```
 
+## MCP Tools (if available via MCP server)
+
+If tokex is running as an MCP server, these tools are available:
+
+- **`run`**: Execute a shell command through RTK
+- **`delegate`**: Delegate a task to a specific role (planner, coder, assistant, etc.)
+- **`plan`**: Create an ordered plan for a task (uses planner role)
+- **`list_roles`**: List available roles and their capabilities
+
+### Delegation examples
+```
+delegate(task="analyze the project structure", role="planner")
+delegate(task="write a function to parse CSV", role="coder")
+plan(task="build a music player app")
+```
+
 ## Rules
 
 1. Always use `-m` — never bare `tokex` or `tokex run`.
