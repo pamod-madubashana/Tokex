@@ -78,11 +78,11 @@ impl Intent {
         let cmd = self.command.trim();
 
         // Shell operators (&&, ||, ;, |, backticks) require shell interpretation.
-        // Route through `rtk run -c "<shell> -c ..."` so the shell handles chaining.
+        // Route through the system shell so chaining works correctly.
         if has_shell_operators(cmd) {
             let shell_cmd = if cfg!(windows) {
-                // cmd /c needs the command unquoted after /c
-                format!("cmd /c {cmd}")
+                // cmd /s /c — /s strips outer quotes, handles nested quotes correctly
+                format!("cmd /s /c {cmd}")
             } else {
                 format!("sh -c '{cmd}'")
             };
