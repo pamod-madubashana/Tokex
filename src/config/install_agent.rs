@@ -81,6 +81,134 @@ Installed by `cotrex install {agent}`. Reinstall with `cotrex install {agent}`.
     )
 }
 
+const OPENCODE_USAGE_PLUGIN: &str = r#"/** @jsxImportSource @opentui/solid */
+import type { TuiPlugin, TuiPluginModule, TuiSlotPlugin } from "@opencode-ai/plugin/tui"
+import { readFileSync, existsSync } from "fs"
+import { join } from "path"
+import { homedir } from "os"
+
+interface UsageEntry {
+  command: string
+  tokens_in: number
+  tokens_out: number
+  exit_code: number
+  via: string
+}
+
+interface UsageStats {
+  total_runs: number
+  total_tokens_in: number
+  total_tokens_out: number
+  total_input_bytes: number
+  total_output_bytes: number
+  entries: UsageEntry[]
+}
+
+function readUsage(): UsageStats | null {
+  const paths = [
+    join(homedir(), ".local", "share", "cotrex", "usage.json"),
+    join(homedir(), ".config", "cotrex", "usage.json"),
+    join(process.cwd(), ".cotrex", "usage.json"),
+  ]
+  for (const p of paths) {
+    try {
+      if (existsSync(p)) {
+        return JSON.parse(readFileSync(p, "utf-8"))
+      }
+    } catch {}
+  }
+  return null
+}
+
+function formatNum(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
+  return String(n)
+}
+
+const sidebarBlock: TuiSlotPlugin = {
+  order: 150,
+  slots: {
+    sidebar_content(ctx, _value) {
+      const usage = readUsage()
+
+      if (!usage || usage.total_runs === 0) {
+        return (
+          <box
+            border
+            borderColor={ctx.theme.current.border}
+            flexDirection="column"
+            gap={1}
+            paddingTop={1}
+            paddingBottom={1}
+            paddingLeft={2}
+            paddingRight={2}
+          >
+            <text fg={ctx.theme.current.primary}>
+              <b>Cotrex Usage</b>
+            </text>
+            <text fg={ctx.theme.current.text dim}>No commands run yet</text>
+          </box>
+        )
+      }
+
+      const recent = usage.entries.slice(-3).reverse()
+      const statusColor = ctx.theme.current.primary
+
+      return (
+        <box
+          border
+          borderColor={ctx.theme.current.border}
+          flexDirection="column"
+          gap={1}
+          paddingTop={1}
+          paddingBottom={1}
+          paddingLeft={2}
+          paddingRight={2}
+        >
+          <text fg={ctx.theme.current.primary}>
+            <b>Cotrex Usage</b>
+          </text>
+
+          <box flexDirection="column" gap={0}>
+            <text fg={ctx.theme.current.text}>
+              Runs: {formatNum(usage.total_runs)}
+            </text>
+            <text fg={statusColor}>
+              Tokens in:  {formatNum(usage.total_tokens_in)}
+            </text>
+            <text fg={statusColor}>
+              Tokens out: {formatNum(usage.total_tokens_out)}
+            </text>
+          </box>
+
+          {recent.length > 0 && (
+            <box flexDirection="column" gap={0}>
+              <text fg={ctx.theme.current.text dim}>Recent:</text>
+              {recent.map((e: UsageEntry) => (
+                <text fg={ctx.theme.current.text}>
+                  {" "}{e.command.slice(0, 28)}{e.command.length > 28 ? ".." : ""} [{e.tokens_out}]
+                </text>
+              ))}
+            </box>
+          )}
+        </box>
+      )
+    },
+  },
+}
+
+const tui: TuiPlugin = async (api) => {
+  api.slots.register(sidebarBlock)
+}
+
+const plugin: TuiPluginModule & { id: string } = {
+  id: "cotrex-usage",
+  tui,
+}
+
+export default plugin
+"#;
+
 fn cotrex_skill(agent: &str, project_name: &str) -> String {
     let mcp_config = match agent {
         "claude" => {
@@ -282,6 +410,36 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
     .map_err(|e| format!("failed to write graphify skill: {e}"))?;
 
     eprintln!("cotrex: project skills -> {}", project_skills.display());
+
+    // 3. For opencode: install the TUI sidebar usage plugin.
+    if agent_id == "opencode" {
+        let opencode_dir = project_dir.join(".opencode");
+        let plugins_dir = opencode_dir.join("plugins");
+        fs::create_dir_all(&plugins_dir)
+            .map_err(|e| format!("failed to create {}: {e}", plugins_dir.display()))?;
+
+        fs::write(plugins_dir.join("cotrex-usage.tsx"), OPENCODE_USAGE_PLUGIN)
+            .map_err(|e| format!("failed to write cotrex usage plugin: {e}"))?;
+
+        let tui_config = opencode_dir.join("tui.json");
+        if !tui_config.exists() {
+            fs::write(
+                &tui_config,
+                r#"{
+  "plugin": [
+    ["./plugins/cotrex-usage.tsx", {}]
+  ]
+}
+"#,
+            )
+            .map_err(|e| format!("failed to write {}: {e}", tui_config.display()))?;
+        }
+        eprintln!(
+            "cotrex: opencode sidebar plugin -> {}",
+            plugins_dir.display()
+        );
+    }
+
     Ok(())
 }
 
