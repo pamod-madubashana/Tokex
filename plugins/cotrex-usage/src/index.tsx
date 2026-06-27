@@ -4,23 +4,11 @@ import type { TuiPlugin, TuiPluginModule } from "@opencode-ai/plugin/tui"
 import { readFileSync, existsSync } from "fs"
 import { join } from "path"
 import { homedir } from "os"
-import { createSignal, For, Show } from "solid-js"
-
-interface UsageEntry {
-  command: string
-  tokens_in: number
-  tokens_out: number
-  exit_code: number
-  via: string
-}
+import { createSignal } from "solid-js"
 
 interface UsageStats {
   total_runs: number
-  total_tokens_in: number
   total_tokens_out: number
-  total_input_bytes: number
-  total_output_bytes: number
-  entries: UsageEntry[]
 }
 
 const PAID_MODEL_COST_PER_TOKEN = 3.0 / 1_000_000.0
@@ -72,38 +60,15 @@ const tui: TuiPlugin = async (api) => {
         const usage = readUsage()
         if (!usage || usage.total_runs === 0) return null
 
-        const cost = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN
-        const saved = cost
-        const recent = usage.entries.slice(-3).reverse()
+        const saved = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN
 
         return (
-          <box
-            border
-            borderColor="gray"
-            flexDirection="column"
-            gap={1}
-            paddingTop={1}
-            paddingBottom={1}
-            paddingLeft={2}
-            paddingRight={2}
-          >
+          <box flexDirection="column" gap={1}>
             <text>
-              <b>Cotrex Usage</b>
+              <b>Cotrex</b>
             </text>
-            <text> Runs: {formatNum(usage.total_runs)}</text>
-            <text> Tokens: {formatNum(usage.total_tokens_out)} out</text>
-            <text color="green"> Saved: {formatCost(saved)}</text>
-            <text dim> vs paid model ($3/1M tokens)</text>
-            <Show when={recent.length > 0}>
-              <text dim> Recent:</text>
-              <For each={recent}>
-                {(e) => (
-                  <text>
-                    {"  "}{e.command.slice(0, 22)}{e.command.length > 22 ? ".." : ""} [{e.tokens_out}]
-                  </text>
-                )}
-              </For>
-            </Show>
+            <text> {formatNum(usage.total_runs)} runs</text>
+            <text color="green"> {formatNum(usage.total_tokens_out)} tokens saved</text>
           </box>
         )
       },

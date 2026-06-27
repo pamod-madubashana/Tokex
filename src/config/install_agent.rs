@@ -85,8 +85,6 @@ Installed by `cotrex install {agent}`. Reinstall with `cotrex install {agent}`.
 // Rebuild with: cd plugins/cotrex-usage && bun install && bun run build
 const OPENCODE_USAGE_PLUGIN: &str = r#"// @bun
 // src/index.tsx
-import { memo as _$memo } from "@opentui/solid";
-import { createComponent as _$createComponent } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
@@ -95,7 +93,7 @@ import { createElement as _$createElement } from "@opentui/solid";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { createSignal, For, Show } from "solid-js";
+import { createSignal } from "solid-js";
 var PAID_MODEL_COST_PER_TOKEN = 3 / 1e6;
 var COLLAPSED_KEY = "cotrex-usage-sidebar.collapsed";
 function readUsage() {
@@ -114,13 +112,6 @@ function formatNum(n) {
     return `${(n / 1000).toFixed(1)}k`;
   return String(n);
 }
-function formatCost(cost) {
-  if (cost < 0.01)
-    return `$${cost.toFixed(4)}`;
-  if (cost < 1)
-    return `$${cost.toFixed(3)}`;
-  return `$${cost.toFixed(2)}`;
-}
 var tui = async (api) => {
   const [collapsed, setCollapsed] = createSignal(Boolean(api.kv.get(COLLAPSED_KEY, false)));
   const [usageVersion, setUsageVersion] = createSignal(0);
@@ -137,61 +128,23 @@ var tui = async (api) => {
         const usage = readUsage();
         if (!usage || usage.total_runs === 0)
           return null;
-        const cost = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN;
-        const saved = cost;
-        const recent = usage.entries.slice(-3).reverse();
+        const saved = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN;
         return (() => {
-          var _el$ = _$createElement("box"), _el$2 = _$createElement("text"), _el$3 = _$createElement("b"), _el$5 = _$createElement("text"), _el$6 = _$createTextNode(` Runs: `), _el$7 = _$createElement("text"), _el$8 = _$createTextNode(` Tokens: `), _el$9 = _$createTextNode(` out`), _el$0 = _$createElement("text"), _el$1 = _$createTextNode(` Saved: `), _el$10 = _$createElement("text");
+          var _el$ = _$createElement("box"), _el$2 = _$createElement("text"), _el$3 = _$createElement("b"), _el$5 = _$createElement("text"), _el$6 = _$createTextNode(` `), _el$7 = _$createTextNode(` runs`), _el$8 = _$createElement("text"), _el$9 = _$createTextNode(` `), _el$0 = _$createTextNode(` tokens saved`);
           _$insertNode(_el$, _el$2);
           _$insertNode(_el$, _el$5);
-          _$insertNode(_el$, _el$7);
-          _$insertNode(_el$, _el$0);
-          _$insertNode(_el$, _el$10);
-          _$setProp(_el$, "border", true);
-          _$setProp(_el$, "borderColor", "gray");
+          _$insertNode(_el$, _el$8);
           _$setProp(_el$, "flexDirection", "column");
           _$setProp(_el$, "gap", 1);
-          _$setProp(_el$, "paddingTop", 1);
-          _$setProp(_el$, "paddingBottom", 1);
-          _$setProp(_el$, "paddingLeft", 2);
-          _$setProp(_el$, "paddingRight", 2);
           _$insertNode(_el$2, _el$3);
-          _$insertNode(_el$3, _$createTextNode(`Cotrex Usage`));
+          _$insertNode(_el$3, _$createTextNode(`Cotrex`));
           _$insertNode(_el$5, _el$6);
-          _$insert(_el$5, () => formatNum(usage.total_runs), null);
-          _$insertNode(_el$7, _el$8);
-          _$insertNode(_el$7, _el$9);
-          _$insert(_el$7, () => formatNum(usage.total_tokens_out), _el$9);
-          _$insertNode(_el$0, _el$1);
-          _$setProp(_el$0, "color", "green");
-          _$insert(_el$0, () => formatCost(saved), null);
-          _$insertNode(_el$10, _$createTextNode(` vs paid model ($3/1M tokens)`));
-          _$setProp(_el$10, "dim", true);
-          _$insert(_el$, _$createComponent(Show, {
-            get when() {
-              return recent.length > 0;
-            },
-            get children() {
-              return [(() => {
-                var _el$12 = _$createElement("text");
-                _$insertNode(_el$12, _$createTextNode(` Recent:`));
-                _$setProp(_el$12, "dim", true);
-                return _el$12;
-              })(), _$createComponent(For, {
-                each: recent,
-                children: (e) => (() => {
-                  var _el$14 = _$createElement("text"), _el$15 = _$createTextNode(`  `), _el$16 = _$createTextNode(` [`), _el$17 = _$createTextNode(`]`);
-                  _$insertNode(_el$14, _el$15);
-                  _$insertNode(_el$14, _el$16);
-                  _$insertNode(_el$14, _el$17);
-                  _$insert(_el$14, () => e.command.slice(0, 22), _el$16);
-                  _$insert(_el$14, () => e.command.length > 22 ? ".." : "", _el$16);
-                  _$insert(_el$14, () => e.tokens_out, _el$17);
-                  return _el$14;
-                })()
-              })];
-            }
-          }), null);
+          _$insertNode(_el$5, _el$7);
+          _$insert(_el$5, () => formatNum(usage.total_runs), _el$7);
+          _$insertNode(_el$8, _el$9);
+          _$insertNode(_el$8, _el$0);
+          _$setProp(_el$8, "color", "green");
+          _$insert(_el$8, () => formatNum(usage.total_tokens_out), _el$0);
           return _el$;
         })();
       }
