@@ -15,6 +15,7 @@ mod permission;
 mod prompt;
 mod script;
 mod tool;
+mod update;
 
 use std::io::{self, IsTerminal, Read};
 use std::process::exit;
@@ -65,6 +66,8 @@ enum Cmd {
         /// Omit to list installed skills.
         agent: Option<String>,
     },
+    /// Check for a newer release and install it if available.
+    Update,
 }
 
 /// Top-level subcommands. Anything else as the first arg is treated as a command to run, so
@@ -77,6 +80,7 @@ const SUBCOMMANDS: &[&str] = &[
     "install-rtk",
     "graph",
     "install",
+    "update",
     "help",
 ];
 
@@ -213,6 +217,13 @@ fn main() {
                         exit(1);
                     }
                 }
+            }
+            return;
+        }
+        Some(Cmd::Update) => {
+            if let Err(e) = update::run() {
+                eprintln!("tokex: update failed: {e}");
+                exit(1);
             }
             return;
         }
