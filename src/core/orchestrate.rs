@@ -9,9 +9,9 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
 
-use crate::intent::Intent;
+use crate::core::intent::Intent;
+use crate::core::normalize::{normalize, LineEvent, Severity};
 use crate::llm::LlmConfig;
-use crate::normalize::{normalize, LineEvent, Severity};
 
 /// Keep the last N output lines for the LLM. RTK already pre-filters, so this is a token guard.
 /// ponytail: last 200 lines; raise only if compression misses context past that window.
@@ -74,7 +74,7 @@ pub fn run(
     // PROCESS_START on the human channel only; machine channel is pure line/result events.
     writeln!(human, "› rtk {}", args.join(" ")).ok();
 
-    let rtk = crate::install::ensure_rtk()?;
+    let rtk = crate::config::install::ensure_rtk()?;
     let mut child = Command::new(&rtk)
         .args(&args)
         .stdout(Stdio::piped())

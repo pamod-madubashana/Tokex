@@ -35,8 +35,9 @@ fn on_path() -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve rtk, downloading it automatically if it isn't already present. Order:
-/// next to our own binary → tokex data dir → PATH → download the pinned release.
+/// Resolve rtk. Order: next to our own binary → tokex data dir → PATH → download the pinned
+/// release. When built via the workspace, rtk is compiled to the same directory as tokex,
+/// so the first check almost always succeeds.
 pub fn ensure_rtk() -> Result<PathBuf, String> {
     let name = rtk_bin_name();
     if let Ok(exe) = std::env::current_exe() {
@@ -54,7 +55,7 @@ pub fn ensure_rtk() -> Result<PathBuf, String> {
     if on_path() {
         return Ok(PathBuf::from("rtk"));
     }
-    eprintln!("rtk not found — installing it automatically …");
+    eprintln!("rtk not found — downloading it …");
     install()
 }
 

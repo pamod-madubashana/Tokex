@@ -19,9 +19,9 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use crate::intent::Intent;
+use crate::core::intent::Intent;
+use crate::core::orchestrate::{self, Options};
 use crate::llm::LlmConfig;
-use crate::orchestrate::{self, Options};
 
 /// Who's reading the output.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -817,10 +817,10 @@ fn cap_lines(s: &str, max: usize) -> String {
 /// repo/system. Read-only inspection (Get-ChildItem/find/ls/cat/grep/git status…) is safe and runs
 /// unprompted. Uses the permission module for pattern-based evaluation.
 fn is_risky(cmd: &str) -> bool {
-    let perms = crate::permission::Permissions::default();
+    let perms = crate::agent::permission::Permissions::default();
     matches!(
         perms.evaluate("shell", Some(cmd)),
-        crate::permission::Action::Ask | crate::permission::Action::Deny
+        crate::agent::permission::Action::Ask | crate::agent::permission::Action::Deny
     )
 }
 

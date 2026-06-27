@@ -9,8 +9,8 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::intent::Intent;
-use crate::orchestrate::{self, Options};
+use crate::core::intent::Intent;
+use crate::core::orchestrate::{self, Options};
 
 pub const INSTRUCTIONS: &str = "\
 Scripts/ is ready. For a repetitive or multi-file change, don't edit files one by one:

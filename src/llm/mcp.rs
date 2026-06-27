@@ -10,9 +10,9 @@ use std::io::{self, BufRead, Write};
 use serde_json::{json, Value};
 
 use crate::config::Config;
-use crate::intent::Intent;
+use crate::core::intent::Intent;
+use crate::core::orchestrate::{self, Options};
 use crate::llm::LlmConfig;
-use crate::orchestrate::{self, Options};
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 
@@ -178,7 +178,7 @@ fn tool_set_agent(params: &Value) -> Value {
 
 /// `list_roles`: return all available roles with their models and capabilities.
 fn tool_list_roles() -> Value {
-    let roles = crate::prompt::roles_list();
+    let roles = crate::agent::prompt::roles_list();
     let items: Vec<Value> = roles
         .iter()
         .map(|(name, model, desc)| {
@@ -213,12 +213,12 @@ fn tool_delegate(params: &Value, cfg: &Config) -> Value {
         .unwrap_or("assistant")
         .trim();
 
-    let Some((model, header, _mode, max_steps)) = crate::prompt::role(role_name) else {
+    let Some((model, header, _mode, max_steps)) = crate::agent::prompt::role(role_name) else {
         return tool_error(format!("unknown role: {role_name}"));
     };
 
     let llm_cfg = match LlmConfig::from_config(cfg) {
-        Some(c) => crate::prompt::with_model(&c, model),
+        Some(c) => crate::agent::prompt::with_model(&c, model),
         None => return tool_error("LLM not configured — run `tokex setup` first".into()),
     };
 
@@ -229,7 +229,8 @@ fn tool_delegate(params: &Value, cfg: &Config) -> Value {
         footer: false,
     };
 
-    match crate::prompt::fulfill_and_capture(&task, &llm_cfg, Some(header), &opts, max_steps) {
+    match crate::agent::prompt::fulfill_and_capture(&task, &llm_cfg, Some(header), &opts, max_steps)
+    {
         Ok(answer) => json!({
             "content": [{"type": "text", "text": answer}],
             "isError": false,
@@ -251,12 +252,12 @@ fn tool_plan(params: &Value, cfg: &Config) -> Value {
         return tool_error("missing required argument 'task'".into());
     }
 
-    let Some((model, header, _mode, max_steps)) = crate::prompt::role("planner") else {
+    let Some((model, header, _mode, max_steps)) = crate::agent::prompt::role("planner") else {
         return tool_error("planner role not found".into());
     };
 
     let llm_cfg = match LlmConfig::from_config(cfg) {
-        Some(c) => crate::prompt::with_model(&c, model),
+        Some(c) => crate::agent::prompt::with_model(&c, model),
         None => return tool_error("LLM not configured — run `tokex setup` first".into()),
     };
 
@@ -267,7 +268,8 @@ fn tool_plan(params: &Value, cfg: &Config) -> Value {
         footer: false,
     };
 
-    match crate::prompt::fulfill_and_capture(&task, &llm_cfg, Some(header), &opts, max_steps) {
+    match crate::agent::prompt::fulfill_and_capture(&task, &llm_cfg, Some(header), &opts, max_steps)
+    {
         Ok(answer) => json!({
             "content": [{"type": "text", "text": answer}],
             "isError": false,
