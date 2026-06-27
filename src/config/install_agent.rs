@@ -137,8 +137,10 @@ var tui = async (api) => {
           _$setProp(_el$, "flexDirection", "column");
           _$insertNode(_el$2, _$createTextNode(`Cotrex`));
           _$insertNode(_el$4, _el$5);
+          _$setProp(_el$4, "dim", true);
           _$insert(_el$4, () => formatNum(usage.total_runs), _el$5);
           _$insertNode(_el$6, _el$7);
+          _$setProp(_el$6, "dim", true);
           _$insert(_el$6, () => formatNum(usage.total_tokens_out), _el$7);
           return _el$;
         })();
