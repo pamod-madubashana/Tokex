@@ -28,36 +28,9 @@ cotrex responds with structured tool results.
 | `delegate` | Offload a task to a role — the role's model runs commands and returns an analyzed answer. |
 | `plan` | Shorthand for `delegate` with the planner role. |
 
-### MCP Config by Agent Platform
+### MCP Config (all platforms)
 
-**Claude Code** — add to `~/.claude/settings.json`:
-```json
-{
-  "mcpServers": {
-    "cotrex": { "command": "cotrex", "args": ["mcp"] }
-  }
-}
-```
-
-**Codex / OpenCode** — add to agent config:
-```json
-{
-  "mcpServers": {
-    "cotrex": { "command": "cotrex", "args": ["mcp"] }
-  }
-}
-```
-
-**Cursor** — add to `.cursor/mcp.json`:
-```json
-{
-  "mcpServers": {
-    "cotrex": { "command": "cotrex", "args": ["mcp"] }
-  }
-}
-```
-
-**Gemini CLI** — add to agent config:
+Add to your agent's config file (e.g. `~/.claude/settings.json`, `.cursor/mcp.json`, `opencode.json`):
 ```json
 {
   "mcpServers": {
@@ -129,6 +102,48 @@ One pipeline, four stages, shared by every front-end (CLI, stdin-JSON, MCP):
 
 **Core contract**: stdout is machine-only (verbatim rtk lines + JSON result footer). Anything a
 human reads goes to stderr. Never mix human text into stdout.
+
+## Gotchas (read before building or editing)
+
+### Release builds must build rtk FIRST
+
+`build.rs` embeds the RTK binary into cotrex at compile time via `include_bytes!`. If RTK
+hasn't been built yet, cotrex compiles with `rtk_not_embedded` and ships without it.
+
+```bash
+cargo build --release -p rtk        # must come first
+cargo build --release -p cotrex     # now embeds rtk
+```
+
+The release workflow (`.github/workflows/release.yml`) does this automatically. Debug builds
+skip embedding entirely (rtk is too large for dev cycles).
+
+### Shell operators on Windows route through PowerShell
+
+Since v2.6.0, commands containing `;`, `&&`, `|`, or `$()` are routed through PowerShell
+on Windows — `cmd /C` doesn't support `;` as a command separator. The routing happens in
+`intent.rs::to_rtk_args()` via `has_shell_operators()`.
+
+### RTK version pin
+
+`src/config/install.rs` pins `RTK_VERSION` (currently `v0.42.4`). The vendored submodule
+(`vendor/rtk`) must match. When bumping rtk, update both the submodule tag AND the constant.
+
+### Graphify auto-refresh
+
+After a code-changing `cotrex run`, the graphify module (`src/graphify/`) auto-refreshes
+the knowledge graph in `graphify-out/`. Read-only commands (`git status`) skip this.
+The graph lives at `graphify-out/GRAPH_REPORT.md` — agents should read it before answering
+architecture or codebase questions.
+
+### Script workflow
+
+For repetitive or multi-file changes, write a script to `Scripts/` and run:
+```bash
+cotrex script Scripts/name.sh    # runs through rtk, verifies via git diff
+```
+cotrex picks the interpreter by extension (`.sh`→bash, `.ps1`→PowerShell, `.py`→python).
+It does NOT generate the script — the agent does.
 
 ## Invariants
 
