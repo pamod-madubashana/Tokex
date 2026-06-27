@@ -40,8 +40,6 @@ This keeps the model's input structured and small while a human still gets a gla
 
 ## How it works
 
-One pipeline, shared by every front-end:
-
 ```
 agent intent  ──▶  parse  ──▶  map to rtk  ──▶  spawn rtk  ──▶  classify lines  ──▶  dual output
  (CLI | JSON)      Intent     first token →     2 threads        severity for       stdout: raw lines
@@ -49,7 +47,7 @@ agent intent  ──▶  parse  ──▶  map to rtk  ──▶  spawn rtk  ─
                                                                                      stderr: summary
 ```
 
-The command's first token picks the RTK invocation: a known tool (`git`, `cargo`, `npm`, …) routes
+The command's first token picks the RTK invocation: a known tool (`git`, `cargo`, `npm`, ...) routes
 to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else falls back to
 `rtk run -c "<command>"`.
 
@@ -57,19 +55,39 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 Cotrex ships as a **single binary** — RTK is embedded inside it. No separate installation needed.
 
-**With your agent** — paste this to Claude Code / Cursor / Codex:
+### Quick install (recommended)
 
-```text
-Install Cotrex: download the latest release for my OS/arch from
-https://github.com/pamod-madubashana/Cotrex/releases/latest, extract the `cotrex` binary, put it on
-my PATH, and confirm with `cotrex --version`.
+Run the install script for your platform:
+
+| Platform | Command |
+|----------|---------|
+| **macOS / Linux** | `curl -sL https://raw.githubusercontent.com/pamod-madubashana/Cotrex/main/Scripts/install.sh \| bash` |
+| **Windows (PowerShell)** | `irm https://raw.githubusercontent.com/pamod-madubashana/Cotrex/main/Scripts/install.ps1 \| iex` |
+| **Windows (double-click)** | Download [`Scripts/install.cmd`](Scripts/install.cmd) and run it |
+
+Or download the install script from `Scripts/` and run it:
+
+```bash
+# macOS/Linux
+bash Scripts/install.sh
+
+# Windows (PowerShell)
+.\Scripts\install.ps1
+
+# Windows (double-click)
+Scripts\install.cmd
 ```
 
-**Manual** — download the archive for your platform from
-[Releases](https://github.com/pamod-madubashana/Cotrex/releases/latest), extract `cotrex`, put it on
-your `PATH`, and run `cotrex --version`.
+### Manual install
 
-**Build from source** — needs a Rust toolchain. RTK must be built first so it can be embedded:
+1. Download the archive for your platform from [Releases](https://github.com/pamod-madubashana/Cotrex/releases/latest)
+2. Extract `cotrex`
+3. Put it on your `PATH`
+4. Run `cotrex --version`
+
+### Build from source
+
+Needs a Rust toolchain. RTK must be built first so it can be embedded:
 
 ```bash
 git clone --recursive https://github.com/pamod-madubashana/Cotrex
@@ -78,11 +96,9 @@ cargo build --release --bin rtk   # build RTK first
 cargo build --release             # build cotrex with embedded RTK
 ```
 
-(Already cloned flat? `git submodule update --init --recursive`.)
-
 ## Usage
 
-**Run a command through RTK:**
+### Run a command through RTK
 
 ```bash
 cotrex run "git status"
@@ -100,16 +116,20 @@ cotrex git status        # same thing — the run subcommand is optional
 ‹ ok (exit 0, 0 error line(s))
 ```
 
-Output lines pass through verbatim — Cotrex never pays a per-line JSON tax for what's meant to
-*compress* command output. Status rides on the single footer (and, on failure, an `insight` line).
+Shell operators are supported — they route through the system shell automatically:
 
-**Pipe an intent as JSON** (no subcommand):
+```bash
+cotrex run "git add . && git commit -m 'fix: thing'"
+cotrex run "cargo test || echo 'tests failed'"
+```
+
+### JSON intent (pipe)
 
 ```bash
 echo '{"tool":"rtk","cmd":"cargo --version"}' | cotrex
 ```
 
-**Compress output with an LLM** (opt-in, fewer tokens for the agent):
+### LLM compression (opt-in)
 
 ```bash
 cotrex run --llm "cargo test"
@@ -121,73 +141,28 @@ cotrex run --llm "cargo test"
  "important_errors":["cannot find crate `serde_json`"],"suggested_fix":"add serde_json to Cargo.toml"}
 ```
 
-The agent can read just that insight instead of the full log. Needs an API key (below); without
-`--llm`, no key is read and no request is made.
+Needs an API key configured via `cotrex setup`. Without `--llm`, no key is read.
 
-**Prompts (a single quoted arg).** Several unquoted args are a command (`cotrex git status`); a
-single quoted string is a prompt. **For a task, the model gathers with shell commands and then
-SYNTHESIZES an answer** — it inspects step by step, never dumps a raw command log. A safe read-only
-command runs unprompted; a risky one (delete, overwrite, install, push, network, sudo…) asks first.
-If a command fails, the model reads the error and fixes it or answers from it. `category: text` (or a
-JSON object) returns a structured answer instead.
+### Prompts (single quoted arg)
 
 ```bash
-cotrex "list all rust projects in the current dir"       # → runs `find … | sed …`, prints the list
-cotrex "what does the ? operator do?"                    # → answers (rendered markdown)
-cotrex "plan-stack: build a music player app"            # category → structured answer
+cotrex "list all rust projects in the current dir"       # runs find/sed, prints the list
+cotrex "what does the ? operator do?"                    # answers (rendered markdown)
+cotrex "plan-stack: build a music player app"            # structured answer
 ```
 
-Two modes. `cotrex "…"` is for **you**: a spinner while waiting, then the model's output streamed live
-to stderr (thinking for reasoning models, the answer text for instruct models), a running command's
-last 5 output lines shown live in a ```bash viewport, and answers rendered as ANSI markdown
-(syntax-highlighted code). `cotrex -m "…"` is for **another agent**: no spinner, no stream, no
-viewport, raw text — just the output on stdout. A risky command's confirmation reads stdin
-(`printf 'y\n' | cotrex -m "…"`); no input safely aborts.
+`cotrex "..."` is interactive (spinner, live stream, rendered output).
+`cotrex -m "..."` is machine mode (raw text, no spinner, for agent-to-agent).
 
-A **project-structure** ask (`"give me the project structure"`, `"show the directory tree"`) is
-answered directly as a depth-limited tree from `git ls-files` — honors `.gitignore`, no model, no API
-key needed.
-
-```text
-$ cotrex "list all rust projects in the current dir"
-$ find . -name Cargo.toml | sed 's|/Cargo.toml||' | sort      # safe → runs, no prompt
-.
-```
-
-**Roles (offload to a role-specific model).** `cotrex <role> "<task>"` runs the same decide-then-do
-flow on a model picked for that role, so a calling agent offloads work and just waits. With no role,
-`assistant` is the default.
+### Roles (offload to a role-specific model)
 
 ```bash
-cotrex planner "plan releasing this crate to crates.io"   # glm
-cotrex coder "write a Rust fn that reverses a string"     # deepseek
-cotrex orchestrator "build the release artifacts"         # nemotron-ultra
-# also: router (nemotron-nano), assistant (qwen, default)
+cotrex planner "plan releasing this crate to crates.io"
+cotrex coder "write a Rust fn that reverses a string"
+cotrex orchestrator "build the release artifacts"
 ```
 
-Roles share your configured endpoint + key (NVIDIA NIM), swapping in the role's model id. Add or
-retune a role by editing the `ROLES` table in `src/prompt.rs`.
-
-Failing commands set `status: "failed"` in the footer and propagate the underlying exit code; in
-`llm` mode a failure also gets an `insight` line (a successful command stays token-free).
-
-**Scripting (repetitive or multi-file changes).** Don't edit ten files by hand to rename a token —
-write one idempotent script under `Scripts/` and let Cotrex run + verify it:
-
-```bash
-cotrex script                      # creates Scripts/ and prints the workflow
-# ... write Scripts/rename.sh ...
-cotrex script Scripts/rename.sh    # runs it through rtk, then shows `git diff`
-```
-
-Cotrex runs the script through rtk (by extension: `.sh`/`.ps1`/`.py`), then `git diff --stat` so you
-**verify from the diff, not by re-reading files**. The agent writes the script; Cotrex runs and
-verifies it. (`git diff` shows tracked edits; new files show via `git status`.)
-
-## Install skills for your agent
-
-Cotrex can install project-specific skills for your AI agent. This creates a `.cotrex/` directory in
-your project with skill files tailored for your agent:
+### Install skills for your agent
 
 ```bash
 cotrex install opencode    # install skills for OpenCode
@@ -196,46 +171,27 @@ cotrex install codex       # install skills for Codex
 cotrex install cursor      # install skills for Cursor
 ```
 
-Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`, `aider`,
-`continue`, `cline`.
-
-The installed skills include:
-- **graphify** - Knowledge graph generation from code/docs
-- **cotrex-run** - Run commands through RTK with normalized output
-- **cotrex-tree** - Show project structure as a tree
-
-Skills are installed in `.cotrex/skills/` and are automatically detected by your agent when
-working in this project directory.
+Supported agents: `opencode`, `claude`, `codex`, `cursor`, `gemini`, `windsurf`, `aider`, `continue`, `cline`.
 
 ## Setup (provider, API key, modes)
-
-Configure Cotrex *after* install with one interactive command — no file editing:
 
 ```bash
 cotrex setup
 ```
 
-It prompts for:
-- **Provider** — Groq, OpenRouter, NVIDIA NIM (presets fill the URL + a default model), or Custom.
-- **API key** — masked input from any free OpenAI-compatible provider.
-- **Compression** — `heuristic` (rtk filter, default) · `llm` (rtk + AI insight) · `off` (raw).
-- **RTK output** — `normal` or `ultra-compact`.
+Prompts for:
+- **Provider** — Groq, OpenRouter, NVIDIA NIM, or Custom
+- **API key** — masked input
+- **Compression** — `heuristic` (default) · `llm` · `off`
+- **RTK output** — `normal` or `ultra-compact`
 
-Settings are written to your OS config dir (`%APPDATA%\cotrex\config.toml` on Windows,
-`~/.config/cotrex/config.toml` on Linux) — never to the repo. `COTREX_LLM_URL`/`_KEY`/`_MODEL` env
-vars override the file for CI/power use. `cotrex run --llm …` forces the insight on for one run
-regardless of the configured mode.
+Settings written to OS config dir. `COTREX_LLM_URL`/`_KEY`/`_MODEL` env vars override.
 
 ## MCP server (primary interface for agents)
-
-Agents should connect to Cotrex via MCP — it exposes `run`, `delegate`, `plan`, `list_roles`, and
-`set_agent` tools over JSON-RPC 2.0 stdio. CLI is a fallback when MCP is unavailable.
 
 ```bash
 cotrex mcp        # JSON-RPC 2.0 over stdio
 ```
-
-Agent-specific MCP config — add to your agent's settings:
 
 ```json
 {
@@ -245,16 +201,14 @@ Agent-specific MCP config — add to your agent's settings:
 }
 ```
 
-The `run` tool takes `{ "command": "cargo test", "llm": false }` and returns the normalized event
-list (stdout/stderr lines with severity, a result with exit code, and an optional LLM insight) —
-the same machine channel as the CLI, just delivered as a tool result.
+Tools: `run`, `delegate`, `plan`, `list_roles`, `set_agent`.
 
 ## Development
 
 ```bash
-cargo build                       # build (keep it warning-clean)
-cargo test                        # run the self-checks
-cargo test native_command_maps    # run a single test by name
+cargo build --release --bin rtk   # build RTK first
+cargo build --release             # build cotrex with embedded RTK
+cargo test                        # run tests
 ```
 
 See [CLAUDE.md](CLAUDE.md) for architecture and contributor rules.
