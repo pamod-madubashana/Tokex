@@ -74,7 +74,8 @@ fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
             std::env::consts::ARCH
         )
     })?;
-    let asset = format!("cotrex-{tag}-{name}.{ext}");
+    let ver = tag.strip_prefix('v').unwrap_or(tag);
+    let asset = format!("cotrex-{ver}-{name}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
     eprintln!("  downloading {asset} …");
 
