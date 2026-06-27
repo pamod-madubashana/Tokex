@@ -76,6 +76,19 @@ impl Intent {
     /// Returns the args to pass to `rtk` (the program name itself is not included).
     pub fn to_rtk_args(&self) -> Vec<String> {
         let cmd = self.command.trim();
+
+        // Shell operators (&&, ||, ;, |, backticks) require shell interpretation.
+        // Route through `rtk run -c "<shell> -c ..."` so the shell handles chaining.
+        if has_shell_operators(cmd) {
+            let shell_cmd = if cfg!(windows) {
+                // cmd /c needs the command unquoted after /c
+                format!("cmd /c {cmd}")
+            } else {
+                format!("sh -c '{cmd}'")
+            };
+            return vec!["run".into(), "-c".into(), shell_cmd];
+        }
+
         let first = shell_split(cmd).next().unwrap_or_default();
         // Subcommands rtk has a dedicated filter for. Keep in sync with `rtk --help`.
         // ponytail: a flat allowlist; expand as RTK adds filters, no need for a trait/registry.
@@ -154,6 +167,43 @@ fn shell_split(s: &str) -> impl Iterator<Item = String> {
     tokens.into_iter()
 }
 
+/// Check if a command contains shell operators that require shell interpretation.
+/// Operators: &&, ||, ;, |, backticks, $()
+fn has_shell_operators(cmd: &str) -> bool {
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut chars = cmd.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            '&' if !in_single && !in_double => {
+                if chars.peek() == Some(&'&') {
+                    chars.next();
+                    return true;
+                }
+            }
+            '|' if !in_single && !in_double => {
+                if chars.peek() == Some(&'|') {
+                    chars.next();
+                    return true;
+                }
+                return true; // single pipe
+            }
+            ';' if !in_single && !in_double => return true,
+            '`' if !in_single && !in_double => return true,
+            '$' if !in_single && !in_double => {
+                if chars.peek() == Some(&'(') {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +268,27 @@ mod tests {
     fn gh_pr_create_maps_direct() {
         let args = Intent::from_command(r#"gh pr create --title "my title""#).to_rtk_args();
         assert_eq!(args, vec!["gh", "pr", "create", "--title", "my title"]);
+    }
+
+    #[test]
+    fn has_shell_operators_detects_and() {
+        assert!(has_shell_operators("git add foo && git commit"));
+        assert!(has_shell_operators("cmd1 || cmd2"));
+        assert!(has_shell_operators("cmd1; cmd2"));
+        assert!(has_shell_operators("cmd1 | cmd2"));
+        assert!(has_shell_operators("echo `date`"));
+        assert!(has_shell_operators("echo $(date)"));
+        assert!(!has_shell_operators("git status"));
+        assert!(!has_shell_operators(r#"echo "hello && world""#));
+    }
+
+    #[test]
+    fn shell_operators_route_to_sh() {
+        let args = Intent::from_command("git add foo && git commit -m msg").to_rtk_args();
+        if cfg!(windows) {
+            assert_eq!(args, vec!["run", "-c", "cmd /c git add foo && git commit -m msg"]);
+        } else {
+            assert_eq!(args, vec!["run", "-c", "sh -c 'git add foo && git commit -m msg'"]);
+        }
     }
 }
