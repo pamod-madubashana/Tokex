@@ -204,7 +204,21 @@ fn is_structure_request(s: &str) -> bool {
         || lower.contains("repo")
         || lower.contains("codebase")
         || lower.contains("files");
-    has_structure_word && has_directory_noun
+    if has_structure_word && has_directory_noun {
+        return true;
+    }
+    // Also match display verbs with a structure word (e.g. "show the tree", "list structure")
+    if has_structure_word {
+        let has_display_verb = lower.starts_with("show")
+            || lower.starts_with("list")
+            || lower.starts_with("display")
+            || lower.starts_with("print")
+            || lower.starts_with("view");
+        if has_display_verb {
+            return true;
+        }
+    }
+    false
 }
 
 /// Classify one argument. A single quoted arg reaches here; multi-arg invocations are commands and
@@ -704,8 +718,9 @@ impl TailView {
 
     /// Return the full captured output, leaving the final tail on screen (so the command's output
     /// stays visible after it finishes) and dropping the cursor below it for what prints next.
-    fn finish(self) -> Vec<u8> {
+    fn finish(mut self) -> Vec<u8> {
         if self.live && self.shown {
+            self.redraw(); // ensure the last batch of lines is displayed
             let _ = writeln!(std::io::stderr()); // move below the retained block, don't erase it
         }
         self.full
@@ -1077,6 +1092,9 @@ mod tests {
             classify("note: refactor later"),
             Dispatch::Prompt("note: refactor later".into())
         );
+        // Structure requests should be short-circuited
+        assert_eq!(classify("show the project tree"), Dispatch::Structure);
+        assert_eq!(classify("show the tree"), Dispatch::Structure);
     }
 
     #[test]
@@ -1158,5 +1176,23 @@ mod tests {
         assert!(role("coder").is_some());
         assert!(role("assistant").is_some());
         assert!(role("nope").is_none());
+    }
+
+    #[test]
+    fn structure_request_matches_display_verbs() {
+        // Existing: both structure word + directory noun
+        assert!(is_structure_request("show the project tree"));
+        assert!(is_structure_request("list project structure"));
+        assert!(is_structure_request("display the codebase layout"));
+        // New: display verb + structure word (no directory noun needed)
+        assert!(is_structure_request("show the tree"));
+        assert!(is_structure_request("list structure"));
+        assert!(is_structure_request("display layout"));
+        assert!(is_structure_request("print the tree"));
+        assert!(is_structure_request("view the project tree"));
+        // Should NOT match
+        assert!(!is_structure_request("add a tree data structure"));
+        assert!(!is_structure_request("build the project"));
+        assert!(!is_structure_request("hello world"));
     }
 }

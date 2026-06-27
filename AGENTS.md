@@ -1,201 +1,137 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for agentic coding agents working in this repository.
 
 ## What this is
 
-Tokex is a **deterministic RTK orchestration layer**. It normalizes
-agent intent and stream output **without owning execution**. RTK (`rtk`, an external binary that
-must be on PATH) is the execution truth layer; Tokex never runs a raw command — it invokes
-`rtk <subcommand>` and normalizes what RTK returns. If `rtk` is not on PATH, `tokex run` fails at
-spawn — that dependency is functional, not optional.
+Tokex is a **deterministic RTK orchestration layer** written in Rust. It normalizes agent intent and
+stream output **without owning execution**. RTK (`rtk`, an external binary) is the execution truth
+layer; Tokex never runs a raw command directly.
 
-## Getting rtk
-
-`rtk_path()` (in `orchestrate.rs`) resolves rtk in order: next to the tokex binary → the data dir →
-`PATH`. Three ways to provide it:
-- `tokex install-rtk` (`install.rs`) downloads the matching `rtk-ai/rtk` release for the current
-  OS/arch into the data dir (extracted via system `tar`).
-- `cargo build` builds the vendored `vendor/rtk` next to tokex (workspace `default-members`).
-- a system-installed `rtk` on `PATH`.
-
-`rtk` and `graphify` are pinned git submodules under `vendor/`; clone with `--recursive`.
-
-## Commands
+## Build & Test Commands
 
 ```bash
-cargo build                       # build (must be warning-clean before committing)
-cargo test                        # all self-checks
-cargo test native_command_maps    # single test by name (substring match)
-cargo run -- run "git status"     # CLI front-end: forward a command through rtk
-cargo run -- git status           # same thing — run subcommand optional (several args = command)
-echo '{"tool":"rtk","cmd":"cargo --version"}' | cargo run --   # stdin-JSON front-end
-cargo run -- "plan-stack: music player app"                    # category prompt (single quoted arg)
-cargo run -- script Scripts/rename.sh                          # run a script through rtk + verify via git diff
+tokex cargo build                       # build (must be warning-clean before committing)
+tokex cargo test                        # all tests
+tokex cargo test native_command_maps    # run a single test by name (substring match)
+tokex cargo test -p tokex               # CI-style: test only our crate, not vendored rtk
+tokex cargo run -- run "git status"     # CLI: forward a command through rtk
+tokex cargo run -- git status           # same — run subcommand optional (several args = command)
+tokex echo '{"tool":"rtk","cmd":"cargo --version"}' | cargo run --   # stdin-JSON mode
+tokex cargo run -- "plan-stack: music player app"                    # category prompt
+tokex cargo run -- script Scripts/rename.sh                          # run a script via rtk
 ```
 
-## Architecture
+**CI** (`.github/workflows/ci.yml`): runs `cargo test -p tokex` on ubuntu-latest with
+submodules checked out. Wait for green before merging.
 
-One pipeline, four stages, shared by every front-end:
+**Dependencies**: `rtk` and `graphify` are pinned git submodules under `vendor/`; clone with
+`--recursive`. The `Cargo.toml` workspace includes `vendor/rtk` as a default member.
 
-1. **Parse intent** (`intent.rs`) — CLI args *and* stdin JSON both collapse to one `Intent`
-   (`{tool, action, command, stream}`; accepts `cmd` as an alias for `command`).
-2. **Map to RTK** (`Intent::to_rtk_args`) — the command's first token decides the rtk invocation:
-   a token in the `RTK_NATIVE` allowlist (git, cargo, npm, …) routes to that dedicated rtk filter
-   (`cargo test` → `rtk cargo test`); anything else falls back to `rtk run -c "<command>"`.
-3. **Orchestrate** (`orchestrate.rs`) — validate, spawn the `rtk` child, read its stdout+stderr on
-   **two threads feeding one mpsc channel** so the streams interleave live. No async runtime —
-   stdlib `process` + `thread` + `mpsc` only.
-4. **Normalize** (`normalize.rs`) — classify each rtk line by severity (`error|failed|panic|fatal`
-   → error, `warn` → warning, else info). The line text passes through **verbatim**; severity is
-   internal (error count + insight gating), not serialized per line.
+## Architecture Overview
 
-**Dual channel (the core contract):** machine output on **stdout** is the rtk output lines
-**verbatim**, terminated by a single `{"type":"result", ...}` footer (plus a `{"type":"insight"…}`
-line when a failure was analyzed). Wrapping every line in JSON would cost the agent more tokens than
-the raw command it's meant to compress, so don't. The human-readable summary goes to **stderr**.
-Keep these separated by file descriptor — never mix human text into stdout.
+One pipeline, four stages, shared by every front-end (CLI, stdin-JSON, MCP):
 
-`main.rs` is dispatch only. With a first arg that isn't a subcommand: several args = a command
-(`tokex git status`), a single (quoted) arg = a prompt (`tokex "list rust projects"`, see
-`prompt.rs`). `tokex -m "…"` is the same prompt in **Model mode** (output only, for agents) vs the
-default **User mode** (spinner + live-streamed model output, for humans). Otherwise a subcommand
-(`run`/`script`/`setup`/`mcp`/…) or, with no subcommand and piped stdin, a JSON intent.
+1. **Parse intent** (`intent.rs`) — CLI args and stdin JSON both collapse to one `Intent`.
+2. **Map to RTK** (`Intent::to_rtk_args`) — first token in `RTK_NATIVE` allowlist routes to
+   that dedicated rtk filter; anything else falls back to `rtk run -c "<command>"`.
+3. **Orchestrate** (`orchestrate.rs`) — spawn `rtk`, read stdout+stderr on two threads feeding
+   one mpsc channel (no async — stdlib `process` + `thread` + `mpsc` only).
+4. **Normalize** (`normalize.rs`) — classify each line by severity (error/warning/info).
 
-**Front-ends share the core.** CLI, stdin-JSON, and the MCP server (`mcp.rs`, `tokex mcp`) all funnel
-into the same `orchestrate::run`. MCP is a hand-rolled JSON-RPC 2.0 stdio server (sync, no tokio)
-exposing `run` (captures the machine channel, returns it verbatim) and `set_agent` (the model identifies
-its platform when there's no TTY — persists `config.agent` and installs the graphify skill in the
-background). **stdout is the JSON-RPC channel in MCP mode** — the core and the `set_agent` bootstrap
-write to buffers / detached null stdio, never stdout, so nothing corrupts the protocol.
+**Core contract**: stdout is machine-only (verbatim rtk lines + JSON result footer). Anything a
+human reads goes to stderr. Never mix human text into stdout.
 
 ## Invariants
 
 - **Tokex never bypasses RTK.** New tool support = a new entry in `RTK_NATIVE` or a new rtk
   subcommand, not a direct `Command::new("cargo")`.
-- **stdout is machine-only.** Anything a human reads goes to stderr.
-- Keep it sync. The 2-threads+mpsc model is deliberate; reach for async only if Tokex ever
-  multiplexes many concurrent execs.
+- **Keep it sync.** The 2-threads+mpsc model is deliberate.
+- **Never add async** unless Tokex ever multiplexes many concurrent execs.
 
-## Config & modes (`tokex setup`)
+## Code Style
 
-Config lives in the user's OS config dir (`config.rs`: `dirs::config_dir()/tokex/config.toml`), set
-post-install via `tokex setup` (interactive `inquire` prompts) — **not** a project `.env`.
-`config::load()` reads the file then applies `TOKEX_LLM_*` env overrides. Two modes drive execution
-(`main.rs` → `orchestrate::Options`):
-- **compression**: `off` (raw `rtk run -c`, no filter) · `heuristic` (filtered subcommand, default) ·
-  `llm` (filtered + the AI insight).
-- **rtk_verbosity**: `normal` · `ultra-compact` (appends `--ultra-compact` to the rtk args).
+### Rust edition & formatting
+- **Rust 2021 edition** (`edition = "2021"` in Cargo.toml).
+- Standard `rustfmt` defaults — 4-space indentation, 100-char lines.
+- Build must be **warning-clean** before committing.
 
-`tokex run --llm` (or JSON `"llm": true`) forces the insight on regardless of mode. LLM compression
-(`llm.rs`) POSTs the captured output to an OpenAI-compatible endpoint and emits one extra
-`{"type":"insight", ...}` event. Missing key when LLM is requested = fail fast (`run tokex setup`).
-The call is best-effort: a network/parse failure prints `(llm skipped: …)` and never changes the
-exit code.
+### Imports
+- `use` at the top of each function or module, not scattered inline.
+- Standard library imports first, then external crates, then `crate::` internal imports.
+- One `use` per line; group with blank lines between std / external / crate.
 
-## graphify code map (`graphify.rs`)
+### Types & naming
+- `snake_case` for functions, variables, modules.
+- `PascalCase` for types, enums, structs.
+- Enum variants: `PascalCase` (e.g. `Severity::Error`, `Action::Allow`).
+- Constants: `SCREAMING_SNAKE_CASE` (e.g. `RAW_CAP`, `RTK_NATIVE`, `MAX_STEPS`).
+- Private by default; `pub` only when the item is used from another module.
+- Prefer `&str` in function signatures over `&String`.
+- Use `impl Into<String>` for accepting owned strings that may be cloned.
 
-tokex keeps a graphify code map fresh so agents only **read** it (`graphify-out/GRAPH_REPORT.md`,
-`graphify-out/wiki/`) and never spend a turn updating it. graphify is a Python tool
-(`pip install graphifyy`, invoked as `python -m graphify ...`, AST-only — no token cost).
+### Error handling
+- Functions return `Result<T, String>` — plain `String` errors, not `anyhow`/`thiserror`.
+- Use `.map_err(|e| format!("context: {e}"))` to wrap errors with context.
+- Use `.ok()` on I/O writes that must not fail (`writeln!(…).ok()`).
+- `exit(code)` is acceptable in `main.rs` top-level dispatch; library modules return `Result`.
 
-After a **code-changing** `tokex run` (read-only commands like `git status` skip — see
-`touches_code`), `auto_update`:
-- if set up → fires a background `graphify update .`;
-- if not → runs the one-time bootstrap **detached** (re-spawns `tokex graph`) so it never blocks the
-  command.
+### Patterns
+- `#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]` on data structs.
+- Serde: use `#[serde(default)]`, `#[serde(alias = "cmd")]`, `#[serde(rename_all = "lowercase")]`.
+- `#[cfg(test)] mod tests` at the bottom of each file with `use super::*;`.
+- Test names: `snake_case` describing the behavior (e.g. `native_command_maps_direct`).
+- Use `assert_eq!` / `assert!` / `.is_err()` / `.is_ok()` — no custom test harness.
+- `unwrap_or` / `unwrap_or_default` / `unwrap_or_else` preferred over bare `.unwrap()` in
+  production code. `.unwrap()` is acceptable in tests.
 
-The one-time bootstrap: `ensure_package` (`pip install graphifyy`, cached via `.graphify-ok`) →
-`register_skill` (cached via `.graphify-skill`) → build the map. **Skill registration targets the
-agent actually in use**, not just Claude: `resolve_platform` reads `config.agent`, else env
-auto-detects Claude (`CLAUDECODE`), else asks the user when interactive (or leaves guidance to run
-`tokex setup`). It calls `graphify install` (claude), `graphify install --platform <p>`, or
-`graphify <p> install` (fallback for graphify's per-platform subcommands).
+### Documentation
+- Module-level `//!` doc comments at the top of each `.rs` file.
+- `///` doc comments on public items (structs, functions, constants).
+- Inline `//` comments for non-obvious logic, especially around the core contract
+  (stdout = machine, stderr = human) and concurrency patterns.
+- `ponytail:` comments mark design decisions and known trade-offs.
 
-`tokex setup` runs the whole bootstrap up front (the "start project" moment); `tokex graph` forces a
-blocking refresh. All best-effort — never blocks or fails a tokex run. Gated by `graph_auto`.
+### Strings & formatting
+- Prefer `format!("...")` over manual string building.
+- Use `to_ascii_lowercase()` for case-insensitive matching (not `to_lowercase`).
+- `serde_json::json!()` macro for building JSON values.
 
-## Prompts & categories (`prompt.rs`)
+### Concurrency
+- No async runtime — stdlib `thread` + `mpsc` only.
+- `AtomicBool` + `Ordering::Relaxed` for simple stop flags.
+- Channels over mutexes when possible.
 
-A single quoted arg is a *prompt*, not a command. `prompt::classify` routes it:
-- **free text → a task** (`Prompt`): handled by the **`assistant` role** (the default when none is
-  named). `prompt::fulfill` asks the model to **decide** (`DECISION_SYSTEM`): reply
-  `{"run":"<cmd>"}` to gather, or `{"answer":"<text>"}` to finish. It **gathers with commands then
-  SYNTHESIZES an answer** — never a raw command dump. The answer is printed (markdown→ANSI in User
-  mode). Headline path: `tokex "list all rust projects"`.
-- `<known-category>: text` (`Category`) or a JSON object (`Json`) → a **structured answer** using
-  that category's header (`plan-stack`, `theme`, …). These aren't runnable commands.
-- a lone token → a command.
+## Commit & Branch Rules
 
-`fulfill` runs a **step loop** (`MAX_STEPS`): each turn the model replies `{"run":cmd}` (run one
-command, its capped output fed back) or `{"answer":text}` (the final, **analyzed** answer). It
-explores one level at a time (skip vendor/target) instead of one mega-command; a failure is fed back
-to fix; out of steps it's forced to answer from what it gathered. Output is capped at `OUTPUT_CAP`
-lines (`cap_lines`) as a flood stop against a weak model's recurse-everything command.
-
-**Execution** (`exec_capture`): commands are generated for the **native shell** — PowerShell on
-Windows, bash on Unix (the decision prompt is OS-specific) — and run by writing the command to a temp
-script (`.ps1`/`.sh`, with `$ErrorActionPreference='Stop'`/`set -e` so errors get a non-zero exit)
-and invoking the interpreter on it *by path* via rtk (raw). This avoids cmd.exe's pipe/quoting
-mangling and cross-shell mount mismatches. **Safe (read-only) commands run unprompted**; only a
-**risky** one (`is_risky`: delete/overwrite/install/push/network/sudo, POSIX *and* PowerShell
-cmdlets) is confirmed (default No). In User mode a running command's last 5 output lines stream live
-in a ```bash viewport (`TailView`) — redrawn in place via cursor moves, erased when it finishes so
-only the answer remains; off in Model mode / non-TTY.
-
-Each **category** binds a name to a *header* in the `CATEGORIES` table — **add a category by adding a
-row**. Prompts require an LLM key.
-
-**Roles** (`tokex <role> "<task>"`, e.g. `tokex planner "…"`, `tokex coder "…"`) pick a
-**role-specific model** for the same decide-run-or-answer flow, so a calling agent offloads work and
-just waits. The `ROLES` table binds each role to `(model id, header)` — `planner` (glm),
-`router`/`orchestrator` (nemotron nano/ultra), `coder` (deepseek), `assistant` (qwen, the default).
-Same endpoint + key as the configured LLM, role's model id swapped in. A role wins dispatch when
-it's the first arg.
-
-Two modes (`prompt::Mode`): **User** (default) shows a stderr spinner until the first token, then
-streams the model's output live (thinking for reasoning models, the answer text itself for instruct
-models like the assistant); **Model** (`tokex -m "…"`, for agents) shows neither — just the output on
-stdout (task exec runs with `footer:false`, human channel suppressed).
-
-A **project-structure** request (`is_structure_request`: "structure"/"tree"/"layout" + a
-directory-ish noun) short-circuits the model entirely — `project_tree` renders a depth-limited tree
-from `git ls-files` (honors `.gitignore`, leaves submodules unexpanded; a noise-skipping shallow walk
-outside a git repo). It's a `tree`, not a question, so it needs no LLM key.
-
-## Scripting (`script.rs`)
-
-**Repetitive or multi-file change? Write a script, don't edit each file.** For things like renaming
-a token across many files, the agent writes ONE idempotent script under `Scripts/` (created if
-missing) and runs `tokex script Scripts/<name>.sh`. tokex runs it through rtk (never raw — `rtk run
--c "bash …"`, picked by extension: `.sh`/`.ps1`/`.py`), then runs `git diff --stat` so the change is
-**verified from the diff, not by re-reading files**. Exit code is the script's; success = it ran.
-tokex does not generate the script — the agent does; tokex provides the instruction, run, and verify.
-`tokex script` with no file just creates `Scripts/` and prints the workflow. (`git diff` only shows
-tracked modifications — new/untracked files show via `git status`.)
-
-## Out of scope (deferred, do not add speculatively)
-
-(nothing currently deferred)
-
-## Commit & attribution rules (must follow)
-
-- **Never** put the word "claude" in a branch name or commit message.
-- **Never** add an AI co-author or attribution trailer (`Co-Authored-By: Claude …`,
-  "Generated with…") to commits or PRs.
-- **Real-time commits (must follow):** after changing a file, commit that change immediately.
-  Don't batch unrelated edits into one commit or leave the tree dirty between steps — one logical
-  change, one commit, right away.
+- **Never** put "claude" in a branch name or commit message.
+- **Never** add AI co-author attribution to commits.
+- **Real-time commits**: after changing a file, commit that change immediately. One logical
+  change, one commit, right away. Don't batch unrelated edits.
 - Concise subject line; short body explaining *why* when it isn't obvious.
+- **Never push to `main`.** Every change ships through a PR:
+  1. Branch off `main` with a descriptive name.
+  2. Commit each logical change immediately.
+  3. `gh pr create` to open a PR.
+  4. Wait for CI to pass before merging.
+  5. `gh pr merge --squash --delete-branch`.
+  6. `git checkout main && git pull`, delete the local branch.
 
-## Branch & PR workflow (must follow)
+## Module Map
 
-**Never push to `main`.** Every change ships through a PR:
-
-1. Branch off `main` with a fresh, descriptive name. **Never** put "claude" in a branch name.
-2. Make changes there (real-time commits still apply — commit each logical change immediately).
-3. `gh pr create` to open a PR.
-4. **Wait for the `CI` workflow to pass** (`.github/workflows/ci.yml` builds + tests `tokex`). Do not
-   merge on red.
-5. Merge once green (`gh pr merge --squash --delete-branch`).
-6. Clean up and sync: `git checkout main && git pull`, and delete the local branch.
+| File | Purpose |
+|---|---|
+| `main.rs` | CLI dispatch only — parse args, route to subcommands or prompts |
+| `intent.rs` | Normalize CLI/JSON to `Intent`; map to rtk args via `RTK_NATIVE` |
+| `orchestrate.rs` | Spawn rtk, read pipes on 2 threads, write normalized events |
+| `normalize.rs` | Classify output lines by severity (error/warning/info) |
+| `config.rs` | Persistent config in OS config dir; `tokex setup` flow |
+| `llm.rs` | Optional LLM compression — POST output, get structured insight |
+| `mcp.rs` | Hand-rolled JSON-RPC 2.0 stdio server (sync, no tokio) |
+| `prompt.rs` | Agentic task loop — model decides run-vs-answer, step loop |
+| `script.rs` | `tokex script` — run agent scripts through rtk, verify via git diff |
+| `tool.rs` | Minimal tool registry (read/write/edit/glob/grep) for agentic loop |
+| `permission.rs` | Pattern-based permission rules for risky command gating |
+| `graphify.rs` | Auto-refresh code map after code-changing runs |
+| `install.rs` | Download + extract pinned rtk release for current platform |
+| `install_agent.rs` | Install tokex skills into agent-specific directories |
