@@ -32,16 +32,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       # default-members builds both cotrex and the vendored rtk into target/release.
       - run: cargo build --release
-      - name: Package cotrex + rtk
+      - name: Package cotrex
         shell: bash
         run: |
           VER="${{ inputs.version }}"; VER="${VER#v}"   # accept 1.0.0 or v1.0.0
           NAME="${{ matrix.name }}"
           mkdir dist
           if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a "dist/cotrex-${VER}-${NAME}.zip" ./target/release/cotrex.exe ./target/release/rtk.exe
+            7z a "dist/cotrex-${VER}-${NAME}.zip" ./target/release/cotrex.exe
           else
-            tar czf "dist/cotrex-${VER}-${NAME}.tar.gz" -C target/release cotrex rtk
+            tar czf "dist/cotrex-${VER}-${NAME}.tar.gz" -C target/release cotrex
           fi
       - uses: actions/upload-artifact@v4
         with:
