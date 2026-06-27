@@ -4,11 +4,96 @@ Guidance for agentic coding agents working in this repository.
 
 ## Agent Rules (MUST follow)
 
-- **Always use `tokex` to run commands.** Never run `cargo`, `git`, `npm`, etc. directly.
-  Use `tokex -m <command>` (e.g. `tokex -m cargo build`, `tokex -m git status`).
-- **If `tokex` is not on PATH or fails to spawn**, fall back to running `rtk <command>`
-  directly (rtk is bundled next to tokex). Only use raw shell commands as a last resort.
+- **Connect to tokex via MCP.** Tokex exposes a JSON-RPC 2.0 stdio MCP server with tools
+  (`run`, `delegate`, `plan`, `list_roles`, `set_agent`). Use the `run` tool to execute commands.
+- **If MCP is not available**, fall back to CLI: `tokex -m <command>` (e.g. `tokex -m cargo build`).
+- **If tokex is not on PATH**, fall back to `rtk <command>` directly. Raw shell commands are
+  a last resort — they lose the normalization pipeline.
 - **Never bypass the pipeline.** Tokex normalizes output for agents — raw commands lose that.
+
+## MCP Server
+
+Start tokex as an MCP server: `tokex mcp`
+
+Communicates over stdin/stdout using newline-delimited JSON-RPC 2.0. The agent sends requests,
+tokex responds with structured tool results.
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `run` | Execute a shell command through RTK. Returns normalized stdout/stderr with severity, exit code, and optional LLM insight. |
+| `set_agent` | Identify your platform (claude/codex/cursor/gemini/opencode) so graphify installs the right code-map skill. Call once. |
+| `list_roles` | List available roles (planner, coder, assistant, etc.) with their models. |
+| `delegate` | Offload a task to a role — the role's model runs commands and returns an analyzed answer. |
+| `plan` | Shorthand for `delegate` with the planner role. |
+
+### MCP Config by Agent Platform
+
+**Claude Code** — add to `~/.claude/settings.json`:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```
+
+**Codex / OpenCode** — add to agent config:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```
+
+**Cursor** — add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```
+
+**Gemini CLI** — add to agent config:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```
+
+### Example MCP Interaction
+
+```json
+→ {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
+← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"tokex","version":"1.2.0"}}}
+
+→ {"jsonrpc":"2.0","method":"notifications/initialized"}
+  (no response — notification)
+
+→ {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
+← {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"run",...},{"name":"set_agent",...},...]}}
+
+→ {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run","arguments":{"command":"cargo test"}}}
+← {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"ok 2286 passed\n{\"type\":\"result\",\"status\":\"ok\",\"code\":0}"}],"isError":false}}
+```
+
+## CLI Fallback (when MCP is unavailable)
+
+```bash
+tokex -m cargo build                       # build (must be warning-clean before committing)
+tokex -m cargo test                        # all tests
+tokex -m cargo test native_command_maps    # run a single test by name (substring match)
+tokex -m cargo test -p tokex               # CI-style: test only our crate, not vendored rtk
+tokex -m cargo run -- run "git status"     # forward a command through rtk
+tokex -m cargo run -- git status           # same — run subcommand optional
+tokex -m script Scripts/rename.sh          # run a script via rtk
+tokex -m update                            # check for newer release and install if available
+```
 
 ## What this is
 
@@ -21,14 +106,7 @@ no separate install needed.
 ```bash
 tokex -m cargo build                       # build (must be warning-clean before committing)
 tokex -m cargo test                        # all tests
-tokex -m cargo test native_command_maps    # run a single test by name (substring match)
 tokex -m cargo test -p tokex               # CI-style: test only our crate, not vendored rtk
-tokex -m cargo run -- run "git status"     # CLI: forward a command through rtk
-tokex -m cargo run -- git status           # same — run subcommand optional (several args = command)
-tokex echo '{"tool":"rtk","cmd":"cargo --version"}' | cargo run --   # stdin-JSON mode
-tokex -m cargo run -- "plan-stack: music player app"                    # category prompt
-tokex -m cargo run -- script Scripts/rename.sh                          # run a script via rtk
-tokex -m update                            # check for newer release and install if available
 ```
 
 **CI** (`.github/workflows/ci.yml`): runs `cargo test -p tokex` on ubuntu-latest with
@@ -42,12 +120,12 @@ submodules checked out. Wait for green before merging.
 
 One pipeline, four stages, shared by every front-end (CLI, stdin-JSON, MCP):
 
-1. **Parse intent** (`intent.rs`) — CLI args and stdin JSON both collapse to one `Intent`.
+1. **Parse intent** (`core/intent.rs`) — CLI args and stdin JSON both collapse to one `Intent`.
 2. **Map to RTK** (`Intent::to_rtk_args`) — first token in `RTK_NATIVE` allowlist routes to
    that dedicated rtk filter; anything else falls back to `rtk run -c "<command>"`.
-3. **Orchestrate** (`orchestrate.rs`) — spawn `rtk`, read stdout+stderr on two threads feeding
+3. **Orchestrate** (`core/orchestrate.rs`) — spawn `rtk`, read stdout+stderr on two threads feeding
    one mpsc channel (no async — stdlib `process` + `thread` + `mpsc` only).
-4. **Normalize** (`normalize.rs`) — classify each line by severity (error/warning/info).
+4. **Normalize** (`core/normalize.rs`) — classify each line by severity (error/warning/info).
 
 **Core contract**: stdout is machine-only (verbatim rtk lines + JSON result footer). Anything a
 human reads goes to stderr. Never mix human text into stdout.
@@ -129,20 +207,22 @@ human reads goes to stderr. Never mix human text into stdout.
 
 ## Module Map
 
-| File | Purpose |
+| Path | Purpose |
 |---|---|
-| `main.rs` | CLI dispatch only — parse args, route to subcommands or prompts |
-| `intent.rs` | Normalize CLI/JSON to `Intent`; map to rtk args via `RTK_NATIVE` |
-| `orchestrate.rs` | Spawn rtk, read pipes on 2 threads, write normalized events |
-| `normalize.rs` | Classify output lines by severity (error/warning/info) |
-| `config.rs` | Persistent config in OS config dir; `tokex -m setup` flow |
-| `llm.rs` | Optional LLM compression — POST output, get structured insight |
-| `mcp.rs` | Hand-rolled JSON-RPC 2.0 stdio server (sync, no tokio) |
-| `prompt.rs` | Agentic task loop — model decides run-vs-answer, step loop |
-| `script.rs` | `tokex -m script` — run agent scripts through rtk, verify via git diff |
-| `tool.rs` | Minimal tool registry (read/write/edit/glob/grep) for agentic loop |
-| `permission.rs` | Pattern-based permission rules for risky command gating |
-| `graphify.rs` | Auto-refresh code map after code-changing runs |
-| `install.rs` | Download + extract pinned rtk release for current platform |
-| `install_agent.rs` | Install tokex skills into agent-specific directories |
-| `update.rs` | Self-update: check GitHub release, download+install if newer |
+| `src/main.rs` | Entry point only — parse args, delegate to dispatch |
+| `src/cli.rs` | CLI type definitions (Cli, Cmd, SUBCOMMANDS) |
+| `src/dispatch/` | Subcommand dispatch and task routing |
+| `src/core/intent.rs` | Normalize CLI/JSON to `Intent`; map to rtk args via `RTK_NATIVE` |
+| `src/core/orchestrate.rs` | Spawn rtk, read pipes on 2 threads, write normalized events |
+| `src/core/normalize.rs` | Classify output lines by severity (error/warning/info) |
+| `src/config/settings.rs` | Persistent config in OS config dir; `tokex -m setup` flow |
+| `src/config/install.rs` | Download + extract pinned rtk release for current platform |
+| `src/config/install_agent.rs` | Install tokex skills into agent-specific directories |
+| `src/config/update.rs` | Self-update: check GitHub release, download+install if newer |
+| `src/llm/compress.rs` | Optional LLM compression — POST output, get structured insight |
+| `src/llm/mcp.rs` | JSON-RPC 2.0 stdio MCP server (sync, no tokio) |
+| `src/agent/prompt.rs` | Agentic task loop — model decides run-vs-answer, step loop |
+| `src/agent/tool.rs` | Minimal tool registry (read/write/edit/glob/grep) for agentic loop |
+| `src/agent/permission.rs` | Pattern-based permission rules for risky command gating |
+| `src/script/` | `tokex -m script` — run agent scripts through rtk, verify via git diff |
+| `src/graphify/` | Auto-refresh code map after code-changing runs |

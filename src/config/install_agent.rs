@@ -81,7 +81,60 @@ Installed by `tokex install {agent}`. Reinstall with `tokex install {agent}`.
     )
 }
 
-fn tokex_skill(_agent: &str, project_name: &str) -> String {
+fn tokex_skill(agent: &str, project_name: &str) -> String {
+    let mcp_config = match agent {
+        "claude" => {
+            r#"Add to `~/.claude/settings.json`:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```"#
+        }
+        "codex" | "opencode" => {
+            r#"Add to your agent config:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```"#
+        }
+        "cursor" => {
+            r#"Add to `.cursor/mcp.json`:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```"#
+        }
+        "gemini" => {
+            r#"Add to your agent config:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```"#
+        }
+        _ => {
+            r#"Add to your agent's MCP config:
+```json
+{
+  "mcpServers": {
+    "tokex": { "command": "tokex", "args": ["mcp"] }
+  }
+}
+```"#
+        }
+    };
+
     format!(
         r#"---
 name: tokex
@@ -90,11 +143,36 @@ description: "Tokex RTK orchestration skills for {project_name}. Run commands, i
 
 # Tokex Skills
 
-**IMPORTANT:** You are an AI agent. Always use `tokex -m` (model mode) for clean output.
+**IMPORTANT:** You are an AI agent. Always use tokex via MCP (preferred) or CLI fallback.
 
-## Two modes: commands vs prompts
+## 1. MCP (preferred)
 
-tokex has **commands** and **prompts**. They use different syntax — mixing them up will break.
+Connect to tokex as an MCP server. This gives you tools: `run`, `delegate`, `plan`, `list_roles`, `set_agent`.
+
+**Setup** — {mcp_config}
+
+Once connected, use the `run` tool:
+```
+run(command="cargo test")
+run(command="git status")
+run(command="npm install")
+```
+
+Delegation and planning:
+```
+delegate(task="analyze the project structure", role="planner")
+delegate(task="write a function to parse CSV", role="coder")
+plan(task="build a music player app")
+```
+
+Identify yourself so graphify installs the right code-map skill:
+```
+set_agent(agent="{agent}")
+```
+
+## 2. CLI fallback (when MCP is not available)
+
+If tokex is not running as an MCP server, use CLI commands directly.
 
 ### Commands (no quotes)
 Known CLI commands like `cargo`, `git`, `npm`, `ls`. Pass them **without quotes**:
@@ -111,35 +189,20 @@ Natural language instructions. Pass them **inside double quotes**:
 tokex -m "show the project tree"
 tokex -m "list all rust projects"
 tokex -m "explain the architecture"
-tokex -m "install requirements and init"
-```
-
-## MCP Tools (if available via MCP server)
-
-If tokex is running as an MCP server, these tools are available:
-
-- **`run`**: Execute a shell command through RTK
-- **`delegate`**: Delegate a task to a specific role (planner, coder, assistant, etc.)
-- **`plan`**: Create an ordered plan for a task (uses planner role)
-- **`list_roles`**: List available roles and their capabilities
-
-### Delegation examples
-```
-delegate(task="analyze the project structure", role="planner")
-delegate(task="write a function to parse CSV", role="coder")
-plan(task="build a music player app")
 ```
 
 ## Rules
 
-1. Always use `-m` — never bare `tokex` or `tokex run`.
-2. **Commands = no quotes. Prompts = quoted.** Never mix.
+1. **MCP first.** Only use CLI when MCP is not configured.
+2. Commands = no quotes. Prompts = quoted. Never mix.
 3. One command at a time. Feed the result back before running the next.
 4. Skip vendor/, target/, .git/ — they're noise.
 
 ## Installed for: {project_name}
 "#,
-        project_name = project_name
+        agent = agent,
+        project_name = project_name,
+        mcp_config = mcp_config,
     )
 }
 
