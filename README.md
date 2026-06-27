@@ -8,9 +8,8 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/built_with-Rust-orange.svg" alt="Built with Rust">
-  <img src="https://img.shields.io/badge/status-MVP-yellow.svg" alt="Status: MVP">
-  <img src="https://img.shields.io/badge/license-TBD-lightgrey.svg" alt="License: TBD">
-  <img src="https://img.shields.io/badge/MCP-compatible-blue.svg" alt="MCP Compatible">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version 2.0.0">
+  <img src="https://img.shields.io/badge/MCP-primary-blue.svg" alt="MCP Primary">
   <img src="https://img.shields.io/github/actions/workflow/status/pamod-madubashana/Cotrex/ci.yml?branch=main&label=CI" alt="CI">
   <img src="https://img.shields.io/github/v/release/pamod-madubashana/Cotrex" alt="Latest Release">
   <img src="https://img.shields.io/github/downloads/pamod-madubashana/Cotrex/total" alt="Downloads">
@@ -227,19 +226,23 @@ Settings are written to your OS config dir (`%APPDATA%\cotrex\config.toml` on Wi
 vars override the file for CI/power use. `cotrex run --llm …` forces the insight on for one run
 regardless of the configured mode.
 
-## MCP server
+## MCP server (primary interface for agents)
 
-Agents that speak MCP can call Cotrex natively instead of shelling out. Cotrex runs as an MCP server
-over stdio and exposes a `run` tool that returns structured execution events.
+Agents should connect to Cotrex via MCP — it exposes `run`, `delegate`, `plan`, `list_roles`, and
+`set_agent` tools over JSON-RPC 2.0 stdio. CLI is a fallback when MCP is unavailable.
 
 ```bash
 cotrex mcp        # JSON-RPC 2.0 over stdio
 ```
 
-Register it with Claude Code:
+Agent-specific MCP config — add to your agent's settings:
 
-```bash
-claude mcp add cotrex -- /absolute/path/to/cotrex mcp
+```json
+{
+  "mcpServers": {
+    "cotrex": { "command": "cotrex", "args": ["mcp"] }
+  }
+}
 ```
 
 The `run` tool takes `{ "command": "cargo test", "llm": false }` and returns the normalized event
@@ -258,11 +261,7 @@ See [CLAUDE.md](CLAUDE.md) for architecture and contributor rules.
 
 ## Roadmap
 
-Deliberately out of scope for v1 — added when there's a consumer that needs them:
-
-- **Persisted execution graph** — command/dependency/failure trace of cotrex runs themselves.
-- **Single self-contained binary** — build `vendor/rtk` in a cargo workspace and have Cotrex use the
-  vendored binary instead of requiring `rtk` on `PATH`, so there's nothing to install separately.
+- **Single self-contained binary** — embed `rtk` inside Cotrex so there's only one binary to ship.
 
 ## License
 
