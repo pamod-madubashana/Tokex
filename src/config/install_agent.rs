@@ -101,8 +101,11 @@ interface UsageStats {
   total_tokens_out: number
   total_input_bytes: number
   total_output_bytes: number
+  paid_model_cost?: string
   entries: UsageEntry[]
 }
+
+const PAID_MODEL_COST_PER_TOKEN = 3.0 / 1_000_000.0
 
 function readUsage(): UsageStats | null {
   const paths = [
@@ -123,6 +126,12 @@ function readUsage(): UsageStats | null {
 function formatNum(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`
   return String(n)
+}
+
+function formatCost(cost: number): string {
+  if (cost < 0.01) return `$${cost.toFixed(4)}`
+  if (cost < 1.0) return `$${cost.toFixed(3)}`
+  return `$${cost.toFixed(2)}`
 }
 
 const sidebarBlock: TuiSlotPlugin = {
@@ -153,6 +162,8 @@ const sidebarBlock: TuiSlotPlugin = {
 
       const recent = usage.entries.slice(-3).reverse()
       const statusColor = ctx.theme.current.primary
+      const cost = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN
+      const savedColor = cost > 0 ? ctx.theme.current.primary : ctx.theme.current.text
 
       return (
         <box
@@ -174,10 +185,16 @@ const sidebarBlock: TuiSlotPlugin = {
               Runs: {formatNum(usage.total_runs)}
             </text>
             <text fg={statusColor}>
-              Tokens in:  {formatNum(usage.total_tokens_in)}
+              Tokens: {formatNum(usage.total_tokens_out)} out
             </text>
-            <text fg={statusColor}>
-              Tokens out: {formatNum(usage.total_tokens_out)}
+          </box>
+
+          <box flexDirection="column" gap={0}>
+            <text fg={savedColor}>
+              Saved: {formatCost(cost)}
+            </text>
+            <text fg={ctx.theme.current.text dim}>
+              vs paid model ($3/1M tokens)
             </text>
           </box>
 
@@ -438,6 +455,60 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
             "cotrex: opencode sidebar plugin -> {}",
             plugins_dir.display()
         );
+
+        // 4. Add MCP server config to project opencode.json.
+        let project_config = project_dir.join("opencode.json");
+        let mut config: serde_json::Value = if project_config.exists() {
+            fs::read_to_string(&project_config)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_else(|| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        // Add mcp.cotrex if not present
+        let mcp = config
+            .as_object_mut()
+            .unwrap()
+            .entry("mcp")
+            .or_insert_with(|| serde_json::json!({}));
+
+        if mcp.get("cotrex").is_none() {
+            mcp.as_object_mut().unwrap().insert(
+                "cotrex".to_string(),
+                serde_json::json!({
+                    "type": "local",
+                    "command": ["cotrex", "mcp"]
+                }),
+            );
+
+            // Write back
+            let pretty = serde_json::to_string_pretty(&config).unwrap_or_default();
+            fs::write(&project_config, format!("{}\n", pretty))
+                .map_err(|e| format!("failed to write {}: {e}", project_config.display()))?;
+
+            eprintln!(
+                "cotrex: MCP server added to {}",
+                project_config.display()
+            );
+        } else {
+            eprintln!("cotrex: MCP server already configured in project");
+        }
+    }
+
+    // 5. Set up graphify: install package, register skill, build code map.
+    // This only runs when `cotrex install agent` is executed inside a project directory.
+    match crate::graphify::setup_steps() {
+        Ok(steps) => {
+            for (label, step) in steps {
+                eprintln!("cotrex: {label}...");
+                if let Err(e) = step() {
+                    eprintln!("cotrex: {e}");
+                }
+            }
+        }
+        Err(e) => eprintln!("cotrex: graphify setup skipped: {e}"),
     }
 
     Ok(())
