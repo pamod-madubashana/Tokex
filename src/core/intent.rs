@@ -78,15 +78,17 @@ impl Intent {
         let cmd = self.command.trim();
 
         // Shell operators (&&, ||, ;, |, backticks) require shell interpretation.
-        // Route through the system shell so chaining works correctly.
+        // On Unix, sh -c handles them natively. On Windows, cmd /C doesn't support ;
+        // as a command separator, so route through PowerShell instead.
         if has_shell_operators(cmd) {
-            let shell_cmd = if cfg!(windows) {
-                // cmd /s /c — /s strips outer quotes, handles nested quotes correctly
-                format!("cmd /s /c {cmd}")
-            } else {
-                format!("sh -c '{cmd}'")
-            };
-            return vec!["run".into(), "-c".into(), shell_cmd];
+            if cfg!(windows) {
+                return vec![
+                    "run".into(),
+                    "-c".into(),
+                    format!("powershell -NoProfile -Command {cmd}"),
+                ];
+            }
+            return vec!["run".into(), "-c".into(), cmd.into()];
         }
 
         let first = shell_split(cmd).next().unwrap_or_default();

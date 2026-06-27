@@ -30,8 +30,9 @@ jobs:
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
-      # default-members builds both cotrex and the vendored rtk into target/release.
-      - run: cargo build --release
+      # Build rtk first so cotrex's build.rs can embed it.
+      - run: cargo build --release -p rtk
+      - run: cargo build --release -p cotrex
       - name: Package cotrex
         shell: bash
         run: |
