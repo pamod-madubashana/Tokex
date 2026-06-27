@@ -11,7 +11,6 @@ interface UsageStats {
   total_tokens_out: number
 }
 
-const PAID_MODEL_COST_PER_TOKEN = 3.0 / 1_000_000.0
 const COLLAPSED_KEY = "cotrex-usage-sidebar.collapsed"
 
 function readUsage(): UsageStats | null {
@@ -35,12 +34,6 @@ function formatNum(n: number): string {
   return String(n)
 }
 
-function formatCost(cost: number): string {
-  if (cost < 0.01) return `$${cost.toFixed(4)}`
-  if (cost < 1.0) return `$${cost.toFixed(3)}`
-  return `$${cost.toFixed(2)}`
-}
-
 const tui: TuiPlugin = async (api) => {
   const [collapsed, setCollapsed] = createSignal(Boolean(api.kv.get(COLLAPSED_KEY, false)))
   const [usageVersion, setUsageVersion] = createSignal(0)
@@ -60,13 +53,13 @@ const tui: TuiPlugin = async (api) => {
         const usage = readUsage()
         if (!usage || usage.total_runs === 0) return null
 
-        const saved = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN
+        const theme = api.theme.current
 
         return (
           <box flexDirection="column">
-            <text>Cotrex</text>
-            <text color="gray">{formatNum(usage.total_runs)} runs</text>
-            <text color="gray">{formatNum(usage.total_tokens_out)} tokens saved</text>
+            <text style={{ fg: theme.text }}>Cotrex</text>
+            <text style={{ fg: theme.textMuted }}>{formatNum(usage.total_runs)} runs</text>
+            <text style={{ fg: theme.textMuted }}>{formatNum(usage.total_tokens_out)} tokens saved</text>
           </box>
         )
       },

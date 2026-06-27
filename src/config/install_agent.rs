@@ -85,6 +85,7 @@ Installed by `cotrex install {agent}`. Reinstall with `cotrex install {agent}`.
 // Rebuild with: cd plugins/cotrex-usage && bun install && bun run build
 const OPENCODE_USAGE_PLUGIN: &str = r#"// @bun
 // src/index.tsx
+import { effect as _$effect } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
@@ -94,7 +95,6 @@ import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { createSignal } from "solid-js";
-var PAID_MODEL_COST_PER_TOKEN = 3 / 1e6;
 var COLLAPSED_KEY = "cotrex-usage-sidebar.collapsed";
 function readUsage() {
   const paths = [join(homedir(), ".local", "share", "cotrex", "usage.json"), join(homedir(), ".config", "cotrex", "usage.json"), join(process.cwd(), ".cotrex", "usage.json")];
@@ -128,7 +128,7 @@ var tui = async (api) => {
         const usage = readUsage();
         if (!usage || usage.total_runs === 0)
           return null;
-        const saved = usage.total_tokens_out * PAID_MODEL_COST_PER_TOKEN;
+        const theme = api.theme.current;
         return (() => {
           var _el$ = _$createElement("box"), _el$2 = _$createElement("text"), _el$4 = _$createElement("text"), _el$5 = _$createTextNode(` runs`), _el$6 = _$createElement("text"), _el$7 = _$createTextNode(` tokens saved`);
           _$insertNode(_el$, _el$2);
@@ -137,11 +137,26 @@ var tui = async (api) => {
           _$setProp(_el$, "flexDirection", "column");
           _$insertNode(_el$2, _$createTextNode(`Cotrex`));
           _$insertNode(_el$4, _el$5);
-          _$setProp(_el$4, "color", "gray");
           _$insert(_el$4, () => formatNum(usage.total_runs), _el$5);
           _$insertNode(_el$6, _el$7);
-          _$setProp(_el$6, "color", "gray");
           _$insert(_el$6, () => formatNum(usage.total_tokens_out), _el$7);
+          _$effect((_p$) => {
+            var _v$ = {
+              fg: theme.text
+            }, _v$2 = {
+              fg: theme.textMuted
+            }, _v$3 = {
+              fg: theme.textMuted
+            };
+            _v$ !== _p$.e && (_p$.e = _$setProp(_el$2, "style", _v$, _p$.e));
+            _v$2 !== _p$.t && (_p$.t = _$setProp(_el$4, "style", _v$2, _p$.t));
+            _v$3 !== _p$.a && (_p$.a = _$setProp(_el$6, "style", _v$3, _p$.a));
+            return _p$;
+          }, {
+            e: undefined,
+            t: undefined,
+            a: undefined
+          });
           return _el$;
         })();
       }
