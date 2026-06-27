@@ -76,7 +76,7 @@ impl Intent {
     /// Returns the args to pass to `rtk` (the program name itself is not included).
     pub fn to_rtk_args(&self) -> Vec<String> {
         let cmd = self.command.trim();
-        let first = cmd.split_whitespace().next().unwrap_or("");
+        let first = shell_split(cmd).next().unwrap_or_default();
         // Subcommands rtk has a dedicated filter for. Keep in sync with `rtk --help`.
         // ponytail: a flat allowlist; expand as RTK adds filters, no need for a trait/registry.
         const RTK_NATIVE: &[&str] = &[
@@ -111,14 +111,47 @@ impl Intent {
             "psql",
             "aws",
         ];
-        if RTK_NATIVE.contains(&first) {
+        if RTK_NATIVE.contains(&first.as_str()) {
             // rtk git status   ->  ["git", "status"]
-            cmd.split_whitespace().map(String::from).collect()
+            shell_split(cmd).collect()
         } else {
             // rtk run -c "python foo.py"
             vec!["run".into(), "-c".into(), cmd.into()]
         }
     }
+}
+
+/// Split a shell command string into tokens, respecting single and double quotes.
+/// Unlike `split_whitespace()`, this keeps quoted strings intact.
+fn shell_split(s: &str) -> impl Iterator<Item = String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_single = false;
+    let mut in_double = false;
+    let mut chars = s.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double => {
+                in_single = !in_single;
+            }
+            '"' if !in_single => {
+                in_double = !in_double;
+            }
+            ' ' | '\t' if !in_single && !in_double => {
+                if !current.is_empty() {
+                    tokens.push(std::mem::take(&mut current));
+                }
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens.into_iter()
 }
 
 #[cfg(test)]
@@ -154,5 +187,36 @@ mod tests {
         let mut i = Intent::from_command("ls");
         i.tool = "bash".into();
         assert!(i.validate().is_err());
+    }
+
+    #[test]
+    fn shell_split_respects_double_quotes() {
+        let args: Vec<String> =
+            shell_split(r#"gh pr create --title "feat: hello world" --body "body text""#)
+                .collect();
+        assert_eq!(
+            args,
+            vec![
+                "gh",
+                "pr",
+                "create",
+                "--title",
+                "feat: hello world",
+                "--body",
+                "body text"
+            ]
+        );
+    }
+
+    #[test]
+    fn shell_split_respects_single_quotes() {
+        let args: Vec<String> = shell_split("echo 'hello world' foo").collect();
+        assert_eq!(args, vec!["echo", "hello world", "foo"]);
+    }
+
+    #[test]
+    fn gh_pr_create_maps_direct() {
+        let args = Intent::from_command(r#"gh pr create --title "my title""#).to_rtk_args();
+        assert_eq!(args, vec!["gh", "pr", "create", "--title", "my title"]);
     }
 }
