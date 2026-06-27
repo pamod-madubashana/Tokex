@@ -135,6 +135,13 @@ fn tools_list() -> Value {
             },
             "required": ["task"],
         },
+    }, {
+        "name": "usage",
+        "description": "Show token usage statistics — how many tokens cotrex has processed across all runs.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
     }]})
 }
 
@@ -146,6 +153,7 @@ fn tools_call(params: &Value, cfg: &Config) -> Value {
         "list_roles" => tool_list_roles(),
         "delegate" => tool_delegate(params, cfg),
         "plan" => tool_plan(params, cfg),
+        "usage" => tool_usage(),
         other => tool_error(format!("unknown tool: {other}")),
     }
 }
@@ -315,12 +323,16 @@ fn tool_run(params: &Value, cfg: &Config) -> Value {
             if cfg.graph_auto {
                 crate::graphify::auto_update(&intent.command);
             }
-            // The machine channel is raw output lines plus a JSON result footer (and an insight
-            // line on failure) — hand it back verbatim; re-wrapping it would only add tokens.
             let text = String::from_utf8_lossy(&machine).to_string();
-            let mut content = vec![json!({"type": "text", "text": text})];
-            // If we can't tell which agent this is, ask the model to identify itself so the graphify
-            // code-map skill can be installed for the right platform.
+            let input_bytes = intent.command.len();
+            let output_bytes = text.len();
+            crate::usage::record(&intent.command, input_bytes, output_bytes, code, "mcp");
+            let usage_footer =
+                crate::usage::footer(&intent.command, input_bytes, output_bytes, code);
+            let mut content = vec![
+                json!({"type": "text", "text": text}),
+                json!({"type": "text", "text": usage_footer}),
+            ];
             if cfg.graph_auto && crate::graphify::current_agent().is_none() {
                 content.push(json!({"type": "text", "text": "note: cotrex couldn't detect your agent, so the graphify code-map skill isn't installed. Call the set_agent tool with your platform id (e.g. claude, codex, cursor, gemini) to enable it."}));
             }
@@ -332,6 +344,18 @@ fn tool_run(params: &Value, cfg: &Config) -> Value {
 
 fn tool_error(msg: String) -> Value {
     json!({"content": [{"type": "text", "text": format!("error: {msg}")}], "isError": true})
+}
+
+fn tool_usage() -> Value {
+    let usage = crate::usage::summary();
+    let json = crate::usage::summary_json();
+    json!({
+        "content": [
+            {"type": "text", "text": usage},
+            {"type": "text", "text": format!("\n{json}")},
+        ],
+        "isError": false,
+    })
 }
 
 #[cfg(test)]

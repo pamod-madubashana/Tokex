@@ -9,6 +9,7 @@ mod dispatch;
 mod graphify;
 mod llm;
 mod script;
+mod usage;
 
 fn main() {
     // All routing lives in dispatch — main.rs is just the module tree.

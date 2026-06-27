@@ -44,6 +44,8 @@ pub enum Cmd {
     },
     /// Check for a newer release and install it if available.
     Update,
+    /// Show token usage statistics.
+    Usage,
 }
 
 pub const SUBCOMMANDS: &[&str] = &[
@@ -55,5 +57,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "graph",
     "install",
     "update",
+    "usage",
     "help",
 ];

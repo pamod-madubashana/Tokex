@@ -169,6 +169,10 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
             }
             exit(0);
         }
+        Cmd::Usage => {
+            println!("{}", crate::usage::summary());
+            exit(0);
+        }
     }
 }
 
@@ -290,12 +294,22 @@ pub fn run_intent(intent: Intent) {
         if cfg.graph_auto {
             graphify::auto_update(&intent.command);
         }
+
+        crate::usage::record(
+            &intent.command,
+            intent.command.len(),
+            buf.len(),
+            code,
+            "cli",
+        );
+
         exit(code);
     } else {
         let mut out = io::stdout();
         let mut err = io::stderr();
         match orchestrate::run(&intent, &mut out, &mut err, llm_cfg.as_ref(), &opts) {
             Ok(code) => {
+                crate::usage::record(&intent.command, intent.command.len(), 0, code, "cli");
                 if cfg.graph_auto {
                     graphify::auto_update(&intent.command);
                 }
