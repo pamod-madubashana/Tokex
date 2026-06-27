@@ -720,8 +720,8 @@ const RIGHT_MARGIN: usize = 4;
 fn render_block(tail: &VecDeque<String>) -> String {
     let w = term_width().saturating_sub(1 + RIGHT_MARGIN);
     let mut md = String::from("```bash\n");
-    for i in 0..TAIL_ROWS {
-        md.push_str(&clip(tail.get(i).map(String::as_str).unwrap_or(""), w));
+    for line in tail {
+        md.push_str(&clip(line, w));
         md.push('\n');
     }
     md.push_str("```");
