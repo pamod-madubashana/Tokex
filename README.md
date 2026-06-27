@@ -8,7 +8,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/built_with-Rust-orange.svg" alt="Built with Rust">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg" alt="Version 2.0.0">
+  <img src="https://img.shields.io/badge/version-2.5.0-blue.svg" alt="Version 2.5.0">
   <img src="https://img.shields.io/badge/MCP-primary-blue.svg" alt="MCP Primary">
   <img src="https://img.shields.io/github/actions/workflow/status/pamod-madubashana/Cotrex/ci.yml?branch=main&label=CI" alt="CI">
   <img src="https://img.shields.io/github/v/release/pamod-madubashana/Cotrex" alt="Latest Release">
@@ -55,27 +55,27 @@ to that dedicated rtk filter (`cargo test` → `rtk cargo test`); anything else 
 
 ## Installation
 
-Cotrex downloads its `rtk` backend **automatically** on first run — there's nothing else to install.
+Cotrex ships as a **single binary** — RTK is embedded inside it. No separate installation needed.
 
 **With your agent** — paste this to Claude Code / Cursor / Codex:
 
 ```text
 Install Cotrex: download the latest release for my OS/arch from
 https://github.com/pamod-madubashana/Cotrex/releases/latest, extract the `cotrex` binary, put it on
-my PATH, and confirm with `cotrex --version`. It fetches its rtk backend automatically on first run.
+my PATH, and confirm with `cotrex --version`.
 ```
 
 **Manual** — download the archive for your platform from
 [Releases](https://github.com/pamod-madubashana/Cotrex/releases/latest), extract `cotrex`, put it on
-your `PATH`, and run `cotrex --version`. (`cotrex install-rtk` pre-fetches rtk for offline/CI use.)
+your `PATH`, and run `cotrex --version`.
 
-**Build from source** — needs a Rust toolchain. `rtk` and `graphify` are pinned git submodules, so
-clone recursively:
+**Build from source** — needs a Rust toolchain. RTK must be built first so it can be embedded:
 
 ```bash
 git clone --recursive https://github.com/pamod-madubashana/Cotrex
 cd Cotrex
-cargo build --release          # builds cotrex + rtk into target/release/
+cargo build --release --bin rtk   # build RTK first
+cargo build --release             # build cotrex with embedded RTK
 ```
 
 (Already cloned flat? `git submodule update --init --recursive`.)
@@ -261,8 +261,9 @@ See [CLAUDE.md](CLAUDE.md) for architecture and contributor rules.
 
 ## Roadmap
 
-- **Single self-contained binary** — embed `rtk` inside Cotrex so there's only one binary to ship.
+- **Graphify integration** — auto-refresh code map after code-changing runs
+- **Multi-agent orchestration** — coordinate multiple agents on complex tasks
 
 ## License
 
-TBD.
+[MIT](LICENSE)
