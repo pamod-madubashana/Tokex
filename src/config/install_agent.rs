@@ -129,7 +129,7 @@ import { homedir } from "os";
 import { createSignal } from "solid-js";
 var COLLAPSED_KEY = "cotrex-usage-sidebar.collapsed";
 function readUsage() {
-  const paths = [join(homedir(), ".local", "share", "cotrex", "usage.json"), join(homedir(), ".config", "cotrex", "usage.json"), join(process.cwd(), ".cotrex", "usage.json")];
+  const paths = [join(homedir(), ".local", "share", "cotrex", "usage.json"), join(homedir(), ".config", "cotrex", "usage.json"), join(homedir(), "AppData", "Roaming", "cotrex", "usage.json"), join(process.cwd(), ".cotrex", "usage.json")];
   for (const p of paths) {
     try {
       if (existsSync(p)) {
