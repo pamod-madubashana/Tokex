@@ -45,7 +45,7 @@ pub fn download_with_progress(url: &str, dest: &Path) -> Result<(), String> {
         let pb = ProgressBar::new(total);
         pb.set_style(
             ProgressStyle::with_template(
-                "  {cyan}{bytes:>12}{cyan}/{total_bytes:<12}{cyan}  {green}{bytes_per_sec:>10}{green}  {yellow}ETA {eta}{yellow}",
+                "  {bar:30.cyan/dim}  {cyan}{bytes:>12}{cyan}/{total_bytes:<12}{cyan}  {green}{bytes_per_sec:>10}{green}  {yellow}ETA {eta}{yellow}",
             )
             .expect("invalid progress template")
             .progress_chars("█▓░"),
