@@ -142,6 +142,74 @@ fn tools_list() -> Value {
             "type": "object",
             "properties": {},
         },
+    }, {
+        "name": "graphify_query",
+        "description": "Query the graphify knowledge graph using BFS or DFS traversal. Returns nodes and edges relevant to the question.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question to search for in the graph"},
+                "dfs": {"type": "boolean", "description": "Use DFS mode instead of BFS (default: false)"},
+                "budget": {"type": "integer", "description": "Token budget for output (default: 2000)"},
+            },
+            "required": ["question"],
+        },
+    }, {
+        "name": "graphify_path",
+        "description": "Find the shortest path between two concepts in the knowledge graph.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "node_a": {"type": "string", "description": "Source concept name"},
+                "node_b": {"type": "string", "description": "Target concept name"},
+            },
+            "required": ["node_a", "node_b"],
+        },
+    }, {
+        "name": "graphify_explain",
+        "description": "Get a plain-language explanation of a node and all its connections in the knowledge graph.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "node_name": {"type": "string", "description": "Node name to explain"},
+            },
+            "required": ["node_name"],
+        },
+    }, {
+        "name": "graphify_add",
+        "description": "Fetch a URL (webpage, paper, tweet, PDF) and add it to the graphify corpus.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "URL to fetch"},
+                "author": {"type": "string", "description": "Author tag"},
+                "contributor": {"type": "string", "description": "Contributor tag"},
+            },
+            "required": ["url"],
+        },
+    }, {
+        "name": "graphify_save_result",
+        "description": "Save a Q&A result back into the knowledge graph to improve future queries.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "The question that was asked"},
+                "answer": {"type": "string", "description": "The answer text"},
+                "result_type": {"type": "string", "description": "Type: query, path_query, or explain"},
+                "nodes": {"type": "array", "items": {"type": "string"}, "description": "Node labels cited in the answer"},
+            },
+            "required": ["question", "answer"],
+        },
+    }, {
+        "name": "graphify_export",
+        "description": "Export the graph in various formats (svg, graphml, neo4j).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "format": {"type": "string", "description": "Export format: svg, graphml, or neo4j"},
+            },
+            "required": ["format"],
+        },
     }]})
 }
 
@@ -154,6 +222,12 @@ fn tools_call(params: &Value, cfg: &Config) -> Value {
         "delegate" => tool_delegate(params, cfg),
         "plan" => tool_plan(params, cfg),
         "usage" => tool_usage(),
+        "graphify_query" => tool_graphify_query(params),
+        "graphify_path" => tool_graphify_path(params),
+        "graphify_explain" => tool_graphify_explain(params),
+        "graphify_add" => tool_graphify_add(params),
+        "graphify_save_result" => tool_graphify_save_result(params),
+        "graphify_export" => tool_graphify_export(params),
         other => tool_error(format!("unknown tool: {other}")),
     }
 }
@@ -370,6 +444,158 @@ fn tool_usage() -> Value {
         ],
         "isError": false,
     })
+}
+
+fn tool_graphify_query(params: &Value) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let question = args
+        .get("question")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if question.is_empty() {
+        return tool_error("missing required argument 'question'".into());
+    }
+    let dfs = args.get("dfs").and_then(Value::as_bool).unwrap_or(false);
+    let budget = args
+        .get("budget")
+        .and_then(Value::as_u64)
+        .unwrap_or(2000) as u32;
+    match crate::graphify::query_graph(question, dfs, budget) {
+        Ok(output) => json!({
+            "content": [{"type": "text", "text": output}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
+}
+
+fn tool_graphify_path(params: &Value) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let node_a = args
+        .get("node_a")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let node_b = args
+        .get("node_b")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if node_a.is_empty() || node_b.is_empty() {
+        return tool_error("missing required arguments 'node_a' and 'node_b'".into());
+    }
+    match crate::graphify::path_between(node_a, node_b) {
+        Ok(output) => json!({
+            "content": [{"type": "text", "text": output}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
+}
+
+fn tool_graphify_explain(params: &Value) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let node_name = args
+        .get("node_name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if node_name.is_empty() {
+        return tool_error("missing required argument 'node_name'".into());
+    }
+    match crate::graphify::explain_node(node_name) {
+        Ok(output) => json!({
+            "content": [{"type": "text", "text": output}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
+}
+
+fn tool_graphify_add(params: &Value) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let url = args
+        .get("url")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if url.is_empty() {
+        return tool_error("missing required argument 'url'".into());
+    }
+    let author = args
+        .get("author")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let contributor = args
+        .get("contributor")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    match crate::graphify::add_url(url, author, contributor) {
+        Ok(output) => json!({
+            "content": [{"type": "text", "text": output}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
+}
+
+fn tool_graphify_save_result(params: &Value) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let question = args
+        .get("question")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let answer = args
+        .get("answer")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    if question.is_empty() || answer.is_empty() {
+        return tool_error("missing required arguments 'question' and 'answer'".into());
+    }
+    let result_type = args
+        .get("result_type")
+        .and_then(Value::as_str)
+        .unwrap_or("query")
+        .trim();
+    let nodes: Vec<&str> = args
+        .get("nodes")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    match crate::graphify::save_result(question, answer, result_type, &nodes) {
+        Ok(output) => json!({
+            "content": [{"type": "text", "text": output}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
+}
+
+fn tool_graphify_export(params: &Value) -> Value {
+    let args = params.get("arguments").cloned().unwrap_or(json!({}));
+    let format = args
+        .get("format")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let result = match format {
+        "svg" => crate::graphify::export_svg(),
+        "graphml" => crate::graphify::export_graphml(),
+        "neo4j" => crate::graphify::export_neo4j(),
+        _ => return tool_error(format!("unknown export format: {format}. Supported: svg, graphml, neo4j")),
+    };
+    match result {
+        Ok(output) => json!({
+            "content": [{"type": "text", "text": output}],
+            "isError": false,
+        }),
+        Err(e) => tool_error(e),
+    }
 }
 
 #[cfg(test)]

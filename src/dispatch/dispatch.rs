@@ -3,7 +3,7 @@
 use std::io::{self, IsTerminal, Read};
 use std::process::exit;
 
-use super::cli::{Cli, Cmd, SUBCOMMANDS};
+use super::cli::{Cli, Cmd, GraphAction, SUBCOMMANDS};
 use crate::agent;
 use crate::config;
 use crate::core::intent::Intent;
@@ -124,12 +124,9 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
             }
             exit(0);
         }
-        Cmd::Graph => {
-            if let Err(e) = graphify::update_blocking() {
-                eprintln!("cotrex: graph update failed: {e}");
-                exit(1);
-            }
-            exit(0);
+        Cmd::Graph { action } => {
+            dispatch_graph(action);
+            return None;
         }
         Cmd::Install { agent } => {
             match agent {
@@ -160,6 +157,115 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
             exit(0);
         }
     }
+}
+
+/// Dispatch graph subcommands to the appropriate graphify wrapper.
+fn dispatch_graph(action: GraphAction) {
+    match action {
+        GraphAction::Update => {
+            if let Err(e) = graphify::update_blocking() {
+                eprintln!("cotrex: graph update failed: {e}");
+                exit(1);
+            }
+        }
+        GraphAction::Query {
+            question,
+            dfs,
+            budget,
+        } => match graphify::query_graph(&question, dfs, budget) {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph query failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Path { node_a, node_b } => match graphify::path_between(&node_a, &node_b) {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph path failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Explain { node_name } => match graphify::explain_node(&node_name) {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph explain failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Add {
+            url,
+            author,
+            contributor,
+        } => match graphify::add_url(&url, &author, &contributor) {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph add failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::ClusterOnly => match graphify::cluster_only() {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph cluster-only failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Svg => match graphify::export_svg() {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph svg export failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Graphml => match graphify::export_graphml() {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph graphml export failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Neo4j => match graphify::export_neo4j() {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph neo4j export failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Neo4jPush {
+            uri,
+            user,
+            password,
+        } => match graphify::push_neo4j(&uri, &user, &password) {
+            Ok(output) => print!("{output}"),
+            Err(e) => {
+                eprintln!("cotrex: graph neo4j-push failed: {e}");
+                exit(1);
+            }
+        },
+        GraphAction::Watch { path, debounce } => {
+            if let Err(e) = graphify::watch(&path, debounce) {
+                eprintln!("cotrex: graph watch failed: {e}");
+                exit(1);
+            }
+        }
+        GraphAction::SaveResult {
+            question,
+            answer,
+            result_type,
+            nodes,
+        } => {
+            let node_refs: Vec<&str> = nodes.iter().map(|s| s.as_str()).collect();
+            match graphify::save_result(&question, &answer, &result_type, &node_refs) {
+                Ok(output) => print!("{output}"),
+                Err(e) => {
+                    eprintln!("cotrex: graph save-result failed: {e}");
+                    exit(1);
+                }
+            }
+        }
+    }
+    exit(0);
 }
 
 /// Read a JSON intent from stdin (pipe mode).

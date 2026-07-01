@@ -81,16 +81,14 @@ fn graphify_bin() -> (PathBuf, bool) {
     (PathBuf::from(py), false)
 }
 
-/// Run graphify command with the appropriate binary.
+/// Run graphify command with the appropriate binary. Returns true if successful.
 fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
     let (bin, is_standalone) = graphify_bin();
     let mut cmd_args = Vec::new();
 
     if is_standalone {
-        // Standalone binary: run directly
         cmd_args.extend_from_slice(args);
     } else {
-        // Python module: run as `python -m graphify ...`
         cmd_args.push("-m");
         cmd_args.push("graphify");
         cmd_args.extend_from_slice(args);
@@ -109,6 +107,32 @@ fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
     cmd.status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Run graphify command and capture stdout. Returns (success, stdout_text).
+fn run_graphify_capture(args: &[&str]) -> (bool, String) {
+    let (bin, is_standalone) = graphify_bin();
+    let mut cmd_args = Vec::new();
+
+    if is_standalone {
+        cmd_args.extend_from_slice(args);
+    } else {
+        cmd_args.push("-m");
+        cmd_args.push("graphify");
+        cmd_args.extend_from_slice(args);
+    }
+
+    let output = Command::new(&bin)
+        .args(&cmd_args)
+        .output();
+
+    match output {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout).to_string();
+            (o.status.success(), stdout)
+        }
+        Err(_) => (false, String::new()),
+    }
 }
 
 fn run_quiet(prog: &str, args: &[&str]) -> bool {
@@ -364,6 +388,199 @@ fn update_blocking_with_prompt(prompt_when_unknown: bool, verbose: bool) -> Resu
         Ok(())
     } else {
         Err("graphify update failed".into())
+    }
+}
+
+/// `graphify query` — BFS/DFS traversal of the knowledge graph.
+pub fn query_graph(question: &str, dfs: bool, budget: u32) -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let mode = if dfs { "dfs" } else { "bfs" };
+    let budget_str = budget.to_string();
+    let mut args = vec!["query", question, "--mode", mode, "--budget", &budget_str];
+    // graphify query uses positional question, but --dfs flag for DFS mode
+    if dfs {
+        args = vec!["query", question, "--dfs", "--budget", &budget_str];
+    }
+    let (ok, output) = run_graphify_capture(&args);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify query failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify path` — shortest path between two concepts.
+pub fn path_between(node_a: &str, node_b: &str) -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let (ok, output) = run_graphify_capture(&["path", node_a, node_b]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify path failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify explain` — plain-language explanation of a node.
+pub fn explain_node(node_name: &str) -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let (ok, output) = run_graphify_capture(&["explain", node_name]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify explain failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify add` — fetch a URL and add it to the corpus.
+pub fn add_url(url: &str, author: &str, contributor: &str) -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let mut args = vec!["add", url];
+    if !author.is_empty() {
+        args.push("--author");
+        args.push(author);
+    }
+    if !contributor.is_empty() {
+        args.push("--contributor");
+        args.push(contributor);
+    }
+    let (ok, output) = run_graphify_capture(&args);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify add failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify --cluster-only` — re-cluster existing graph without re-extraction.
+pub fn cluster_only() -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let (ok, output) = run_graphify_capture(&["--cluster-only", "."]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify cluster-only failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify --svg` — export graph as SVG.
+pub fn export_svg() -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let (ok, output) = run_graphify_capture(&["--svg", "."]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify svg export failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify --graphml` — export graph as GraphML.
+pub fn export_graphml() -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let (ok, output) = run_graphify_capture(&["--graphml", "."]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify graphml export failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify --neo4j` — generate cypher.txt for Neo4j import.
+pub fn export_neo4j() -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let (ok, output) = run_graphify_capture(&["--neo4j", "."]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify neo4j export failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify --neo4j-push` — push graph directly to a Neo4j instance.
+pub fn push_neo4j(uri: &str, user: &str, password: &str) -> Result<String, String> {
+    if current_project_dir().is_none() {
+        return Err("not in a project directory".into());
+    }
+    let push_arg = format!("--neo4j-push={uri}");
+    let user_arg = format!("--neo4j-user={user}");
+    let pass_arg = format!("--neo4j-password={password}");
+    let (ok, output) = run_graphify_capture(&[".", &push_arg, &user_arg, &pass_arg]);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify neo4j-push failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify save-result` — save a Q&A back into the graph for future queries.
+pub fn save_result(
+    question: &str,
+    answer: &str,
+    result_type: &str,
+    nodes: &[&str],
+) -> Result<String, String> {
+    let mut args = vec![
+        "save-result",
+        "--question", question,
+        "--answer", answer,
+        "--type", result_type,
+    ];
+    if !nodes.is_empty() {
+        args.push("--nodes");
+        args.extend_from_slice(nodes);
+    }
+    let (ok, output) = run_graphify_capture(&args);
+    if ok {
+        Ok(output)
+    } else if output.is_empty() {
+        Err("graphify save-result failed".into())
+    } else {
+        Err(output)
+    }
+}
+
+/// `graphify --watch` — watch folder and auto-rebuild on code changes. Blocks until interrupted.
+pub fn watch(path: &str, debounce: u32) -> Result<(), String> {
+    let debounce_str = debounce.to_string();
+    let args = vec!["--watch", path, "--debounce", &debounce_str];
+    // watch needs inherit_stdio=true to show live output
+    if run_graphify(&args, true) {
+        Ok(())
+    } else {
+        Err("graphify watch failed".into())
     }
 }
 
