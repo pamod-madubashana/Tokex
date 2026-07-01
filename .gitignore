@@ -1,4 +1,6 @@
 /target
+/build
+/dist
 Cargo.lock
 cotrex-graph.json
 graphify-out/
