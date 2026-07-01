@@ -30,6 +30,23 @@ jobs:
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Build graphify standalone executable so cotrex can embed it.
+      - name: Install Python dependencies
+        run: pip install pyinstaller graphifyy
+      - name: Build graphify executable
+        run: python -m PyInstaller --clean --noconfirm Scripts/graphify.spec
+      - name: Copy graphify to target/release
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp dist/graphify.exe target/release/graphify.exe
+          else
+            cp dist/graphify target/release/graphify
+            chmod +x target/release/graphify
+          fi
       # Build rtk first so cotrex's build.rs can embed it.
       - run: cargo build --release -p rtk
       - run: cargo build --release -p cotrex
