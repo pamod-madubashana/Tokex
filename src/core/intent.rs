@@ -143,9 +143,9 @@ fn shell_split(s: &str) -> impl Iterator<Item = String> {
     let mut current = String::new();
     let mut in_single = false;
     let mut in_double = false;
-    let mut chars = s.chars().peekable();
+    let chars = s.chars().peekable();
 
-    while let Some(c) = chars.next() {
+    for c in chars {
         match c {
             '\'' if !in_double => {
                 in_single = !in_single;
@@ -171,6 +171,7 @@ fn shell_split(s: &str) -> impl Iterator<Item = String> {
 
 /// Check if a command contains shell operators that require shell interpretation.
 /// Operators: &&, ||, ;, |, backticks, $()
+#[allow(clippy::while_let_on_iterator)]
 fn has_shell_operators(cmd: &str) -> bool {
     let mut in_single = false;
     let mut in_double = false;
@@ -195,10 +196,8 @@ fn has_shell_operators(cmd: &str) -> bool {
             }
             ';' if !in_single && !in_double => return true,
             '`' if !in_single && !in_double => return true,
-            '$' if !in_single && !in_double => {
-                if chars.peek() == Some(&'(') {
-                    return true;
-                }
+            '$' if !in_single && !in_double && chars.peek() == Some(&'(') => {
+                return true;
             }
             _ => {}
         }
@@ -244,8 +243,7 @@ mod tests {
     #[test]
     fn shell_split_respects_double_quotes() {
         let args: Vec<String> =
-            shell_split(r#"gh pr create --title "feat: hello world" --body "body text""#)
-                .collect();
+            shell_split(r#"gh pr create --title "feat: hello world" --body "body text""#).collect();
         assert_eq!(
             args,
             vec![

@@ -27,7 +27,7 @@ pub struct UsageEntry {
     pub via: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct UsageStats {
     pub total_runs: u64,
     pub total_tokens_in: u64,
@@ -36,19 +36,6 @@ pub struct UsageStats {
     pub total_output_bytes: u64,
     #[serde(default)]
     pub entries: Vec<UsageEntry>,
-}
-
-impl Default for UsageStats {
-    fn default() -> Self {
-        UsageStats {
-            total_runs: 0,
-            total_tokens_in: 0,
-            total_tokens_out: 0,
-            total_input_bytes: 0,
-            total_output_bytes: 0,
-            entries: Vec::new(),
-        }
-    }
 }
 
 fn bytes_to_tokens(bytes: usize) -> usize {

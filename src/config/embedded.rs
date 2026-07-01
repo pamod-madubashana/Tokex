@@ -19,7 +19,10 @@ fn rtk_bin_name() -> &'static str {
 
 /// Where the extracted RTK binary lives: `<data_dir>/cotrex/embedded-rtk[.exe]`.
 fn embedded_rtk_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("cotrex").join(format!("embedded-{}", rtk_bin_name())))
+    dirs::data_dir().map(|d| {
+        d.join("cotrex")
+            .join(format!("embedded-{}", rtk_bin_name()))
+    })
 }
 
 /// Marker file to avoid re-extracting on every run.

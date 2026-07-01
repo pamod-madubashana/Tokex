@@ -104,9 +104,7 @@ fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
     }
 
-    cmd.status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    cmd.status().map(|s| s.success()).unwrap_or(false)
 }
 
 /// Run graphify command and capture stdout. Returns (success, stdout_text).
@@ -122,9 +120,7 @@ fn run_graphify_capture(args: &[&str]) -> (bool, String) {
         cmd_args.extend_from_slice(args);
     }
 
-    let output = Command::new(&bin)
-        .args(&cmd_args)
-        .output();
+    let output = Command::new(&bin).args(&cmd_args).output();
 
     match output {
         Ok(o) => {
@@ -218,8 +214,10 @@ fn ensure_package(py: &str, verbose: bool) -> bool {
                     path.display()
                 );
             }
-            importable = run_quiet(py, &["-m", "pip", "install", "--quiet", &path.to_string_lossy()])
-                && run_quiet(py, &["-c", "import graphify"]);
+            importable = run_quiet(
+                py,
+                &["-m", "pip", "install", "--quiet", &path.to_string_lossy()],
+            ) && run_quiet(py, &["-c", "import graphify"]);
         }
         // Fall back to PyPI if vendored source not available or failed
         if !importable {
@@ -328,7 +326,7 @@ pub fn auto_update(command: &str) {
     if current_project_dir().is_none() {
         return;
     }
-    if ensure_package(&py(), false) {
+    if ensure_package(py(), false) {
         // Run graphify update in background (fire-and-forget)
         let _ = run_graphify(&["update", "."], false);
     } else {
@@ -363,6 +361,7 @@ pub fn update_blocking() -> Result<(), String> {
 }
 
 /// Step-based bootstrap for setup: caller supplies spinners per step.
+#[allow(clippy::type_complexity)]
 pub fn setup_steps() -> Result<Vec<(&'static str, Box<dyn FnOnce() -> Result<(), String>>)>, String>
 {
     let _cwd = current_project_dir().ok_or_else(|| "not in a project directory".to_string())?;
@@ -408,10 +407,10 @@ fn update_blocking_with_prompt(prompt_when_unknown: bool, verbose: bool) -> Resu
         "not in a project directory; skipping graphify code-map refresh".to_string()
     })?;
     let py = py();
-    if !ensure_package(&py, verbose) {
+    if !ensure_package(py, verbose) {
         return Err("graphify unavailable — need Python + pip to install graphifyy".into());
     }
-    register_skill(&py, verbose, prompt_when_unknown);
+    register_skill(py, verbose, prompt_when_unknown);
     if verbose {
         eprintln!("cotrex: refreshing graphify code map in {}", cwd.display());
     }
@@ -585,9 +584,12 @@ pub fn save_result(
 ) -> Result<String, String> {
     let mut args = vec![
         "save-result",
-        "--question", question,
-        "--answer", answer,
-        "--type", result_type,
+        "--question",
+        question,
+        "--answer",
+        answer,
+        "--type",
+        result_type,
     ];
     if !nodes.is_empty() {
         args.push("--nodes");

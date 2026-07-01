@@ -417,13 +417,13 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
 
         fs::write(
             skill_dir.join("SKILL.md"),
-            cotrex_skill(&agent_id, &project_name),
+            cotrex_skill(agent_id, &project_name),
         )
         .map_err(|e| format!("failed to write cotrex skill: {e}"))?;
 
         fs::write(
             skill_dir.join("graphify.md"),
-            graphify_skill(&agent_id, &project_name),
+            graphify_skill(agent_id, &project_name),
         )
         .map_err(|e| format!("failed to write graphify skill: {e}"))?;
 
@@ -437,13 +437,13 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
 
     fs::write(
         project_skills.join("SKILL.md"),
-        cotrex_skill(&agent_id, &project_name),
+        cotrex_skill(agent_id, &project_name),
     )
     .map_err(|e| format!("failed to write cotrex skill: {e}"))?;
 
     fs::write(
         project_skills.join("graphify.md"),
-        graphify_skill(&agent_id, &project_name),
+        graphify_skill(agent_id, &project_name),
     )
     .map_err(|e| format!("failed to write graphify skill: {e}"))?;
 
@@ -459,8 +459,11 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
         fs::create_dir_all(&global_plugins_dir)
             .map_err(|e| format!("failed to create {}: {e}", global_plugins_dir.display()))?;
 
-        fs::write(global_plugins_dir.join("cotrex-usage.js"), OPENCODE_USAGE_PLUGIN)
-            .map_err(|e| format!("failed to write cotrex usage plugin: {e}"))?;
+        fs::write(
+            global_plugins_dir.join("cotrex-usage.js"),
+            OPENCODE_USAGE_PLUGIN,
+        )
+        .map_err(|e| format!("failed to write cotrex usage plugin: {e}"))?;
 
         // TUI plugins go in tui.json (global), not project-local
         let tui_config = global_opencode.join("tui.json");
@@ -538,10 +541,7 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
             fs::write(&global_config, format!("{}\n", pretty))
                 .map_err(|e| format!("failed to write {}: {e}", global_config.display()))?;
 
-            eprintln!(
-                "cotrex: MCP server added to {}",
-                global_config.display()
-            );
+            eprintln!("cotrex: MCP server added to {}", global_config.display());
         } else {
             eprintln!("cotrex: MCP server already configured globally");
         }
@@ -576,10 +576,7 @@ pub fn install_agent(agent: &str) -> Result<(), String> {
             fs::write(&project_config, format!("{}\n", pretty))
                 .map_err(|e| format!("failed to write {}: {e}", project_config.display()))?;
 
-            eprintln!(
-                "cotrex: MCP server added to {}",
-                project_config.display()
-            );
+            eprintln!("cotrex: MCP server added to {}", project_config.display());
         } else {
             eprintln!("cotrex: MCP server already configured in project");
         }

@@ -126,7 +126,7 @@ pub fn dispatch_cmd(cmd: Cmd) -> Option<Intent> {
         }
         Cmd::Graph { action } => {
             dispatch_graph(action);
-            return None;
+            None
         }
         Cmd::Install { agent } => {
             match agent {

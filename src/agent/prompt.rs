@@ -294,9 +294,8 @@ fn build_tree_from_files(files: &[String]) -> String {
             // Nested file: show directory prefix if it changed
             let dir = parts[..depth].join("/");
             if dir != prev_dir {
-                for d in 0..depth {
+                for (d, dir_name) in parts.iter().enumerate().take(depth) {
                     let prefix: String = "│   ".repeat(d);
-                    let dir_name = parts[d];
                     if d == depth - 1 {
                         result.push_str(&format!("{prefix}├── {dir_name}/\n"));
                     }
@@ -909,7 +908,7 @@ fn one_call(
             Ok(resp) => {
                 // Handle rate limiting (429) and server errors (5xx) as retryable.
                 let status = resp.status();
-                if status == 429 || (status >= 500 && status < 600) {
+                if status == 429 || (500..600).contains(&status) {
                     last_err = format!("HTTP {status}");
                     continue;
                 }
@@ -917,7 +916,7 @@ fn one_call(
             }
             Err(ureq::Error::Status(status, _resp)) => {
                 // ureq wraps non-2xx responses as errors.
-                if status == 429 || (status >= 500 && status < 600) {
+                if status == 429 || (500..600).contains(&status) {
                     last_err = format!("HTTP {status}");
                     continue;
                 }
@@ -1049,6 +1048,7 @@ impl Spinner {
     }
 
     /// Stop the spinner with a green checkmark.
+    #[allow(dead_code)]
     pub fn complete(&self) {
         self.done.store(true, Ordering::Relaxed);
         self.stop.store(true, Ordering::Relaxed);

@@ -19,7 +19,10 @@ fn graphify_bin_name() -> &'static str {
 
 /// Where the extracted graphify binary lives: `<data_dir>/cotrex/embedded-graphify[.exe]`.
 fn embedded_graphify_path() -> Option<PathBuf> {
-    dirs::data_dir().map(|d| d.join("cotrex").join(format!("embedded-{}", graphify_bin_name())))
+    dirs::data_dir().map(|d| {
+        d.join("cotrex")
+            .join(format!("embedded-{}", graphify_bin_name()))
+    })
 }
 
 /// Marker file to avoid re-extracting on every run.

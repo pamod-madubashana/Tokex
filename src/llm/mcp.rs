@@ -457,10 +457,7 @@ fn tool_graphify_query(params: &Value) -> Value {
         return tool_error("missing required argument 'question'".into());
     }
     let dfs = args.get("dfs").and_then(Value::as_bool).unwrap_or(false);
-    let budget = args
-        .get("budget")
-        .and_then(Value::as_u64)
-        .unwrap_or(2000) as u32;
+    let budget = args.get("budget").and_then(Value::as_u64).unwrap_or(2000) as u32;
     match crate::graphify::query_graph(question, dfs, budget) {
         Ok(output) => json!({
             "content": [{"type": "text", "text": output}],
@@ -515,11 +512,7 @@ fn tool_graphify_explain(params: &Value) -> Value {
 
 fn tool_graphify_add(params: &Value) -> Value {
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
-    let url = args
-        .get("url")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .trim();
+    let url = args.get("url").and_then(Value::as_str).unwrap_or("").trim();
     if url.is_empty() {
         return tool_error("missing required argument 'url'".into());
     }
@@ -587,7 +580,11 @@ fn tool_graphify_export(params: &Value) -> Value {
         "svg" => crate::graphify::export_svg(),
         "graphml" => crate::graphify::export_graphml(),
         "neo4j" => crate::graphify::export_neo4j(),
-        _ => return tool_error(format!("unknown export format: {format}. Supported: svg, graphml, neo4j")),
+        _ => {
+            return tool_error(format!(
+                "unknown export format: {format}. Supported: svg, graphml, neo4j"
+            ))
+        }
     };
     match result {
         Ok(output) => json!({

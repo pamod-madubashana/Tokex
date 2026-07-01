@@ -11,6 +11,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Format bytes as human-readable string (e.g. "12.3 MB").
+#[allow(dead_code)]
 fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * 1024;
@@ -73,8 +74,7 @@ pub fn download_with_progress(url: &str, dest: &Path) -> Result<(), String> {
         if n == 0 {
             break;
         }
-        std::io::Write::write_all(&mut file, &buf[..n])
-            .map_err(|e| format!("write error: {e}"))?;
+        std::io::Write::write_all(&mut file, &buf[..n]).map_err(|e| format!("write error: {e}"))?;
         pb.inc(n as u64);
     }
 
@@ -88,8 +88,7 @@ pub fn download_with_progress(url: &str, dest: &Path) -> Result<(), String> {
 pub fn spinner(message: &str) -> ProgressBar {
     let pb = ProgressBar::new_spinner();
     pb.set_style(
-        ProgressStyle::with_template("  {spinner:.green} {msg}")
-            .expect("invalid spinner template"),
+        ProgressStyle::with_template("  {spinner:.green} {msg}").expect("invalid spinner template"),
     );
     pb.set_message(message.to_string());
     pb.enable_steady_tick(Duration::from_millis(80));

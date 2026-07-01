@@ -32,7 +32,9 @@ fn main() {
     let rtk_name = if cfg!(windows) { "rtk.exe" } else { "rtk" };
     let rtk_search_paths = [
         workspace_root.join("target/release").join(rtk_name),
-        workspace_root.join("target/x86_64-pc-windows-msvc/release").join(rtk_name),
+        workspace_root
+            .join("target/x86_64-pc-windows-msvc/release")
+            .join(rtk_name),
         workspace_root
             .join("target/x86_64-unknown-linux-musl/release")
             .join(rtk_name),
@@ -43,10 +45,7 @@ fn main() {
     let rtk_path = rtk_search_paths.iter().find(|p| p.is_file());
 
     if let Some(path) = rtk_path {
-        println!(
-            "cargo:warning=Embedding RTK binary from {}",
-            path.display()
-        );
+        println!("cargo:warning=Embedding RTK binary from {}", path.display());
         println!("cargo:rustc-env=RTK_BINARY_PATH={}", path.display());
         println!("cargo:rustc-cfg=rtk_embedded");
 
@@ -95,10 +94,7 @@ fn main() {
             "cargo:warning=Embedding graphify binary from {}",
             path.display()
         );
-        println!(
-            "cargo:rustc-env=GRAPHIFY_BINARY_PATH={}",
-            path.display()
-        );
+        println!("cargo:rustc-env=GRAPHIFY_BINARY_PATH={}", path.display());
         println!("cargo:rustc-cfg=graphify_embedded");
 
         if let Ok(version) = env::var("GRAPHIFY_VERSION") {
@@ -113,7 +109,9 @@ fn main() {
             }
         }
     } else {
-        println!("cargo:warning=graphify binary not found at build time; will use external graphify");
+        println!(
+            "cargo:warning=graphify binary not found at build time; will use external graphify"
+        );
         println!("cargo:rustc-cfg=graphify_not_embedded");
     }
 
