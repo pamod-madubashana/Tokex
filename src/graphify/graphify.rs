@@ -209,11 +209,26 @@ fn ensure_package(py: &str, verbose: bool) -> bool {
     }
     let mut importable = run_quiet(py, &["-c", "import graphify"]);
     if !importable {
-        if verbose {
-            eprintln!("cotrex: installing graphifyy (one-time) …");
+        // Try installing from vendored source first, fall back to PyPI
+        let vendored_path = find_vendored_graphify();
+        if let Some(path) = vendored_path {
+            if verbose {
+                eprintln!(
+                    "cotrex: installing graphifyy from vendored source ({}) …",
+                    path.display()
+                );
+            }
+            importable = run_quiet(py, &["-m", "pip", "install", "--quiet", &path.to_string_lossy()])
+                && run_quiet(py, &["-c", "import graphify"]);
         }
-        importable = run_quiet(py, &["-m", "pip", "install", "--quiet", "graphifyy"])
-            && run_quiet(py, &["-c", "import graphify"]);
+        // Fall back to PyPI if vendored source not available or failed
+        if !importable {
+            if verbose {
+                eprintln!("cotrex: installing graphifyy from PyPI (one-time) …");
+            }
+            importable = run_quiet(py, &["-m", "pip", "install", "--quiet", "graphifyy"])
+                && run_quiet(py, &["-c", "import graphify"]);
+        }
     }
     if importable {
         touch(data_file(".graphify-ok"));
@@ -221,6 +236,22 @@ fn ensure_package(py: &str, verbose: bool) -> bool {
     } else {
         false
     }
+}
+
+/// Find the vendored graphify source directory.
+/// Looks for `vendor/graphify/` relative to the current directory or parent directories.
+fn find_vendored_graphify() -> Option<PathBuf> {
+    let mut dir = std::env::current_dir().ok()?;
+    loop {
+        let candidate = dir.join("vendor").join("graphify");
+        if candidate.is_dir() && candidate.join("pyproject.toml").exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
 }
 
 /// graphify platform id: explicit config, else env auto-detect (only Claude Code is reliably
