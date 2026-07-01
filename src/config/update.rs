@@ -2,6 +2,7 @@
 //! binary when a newer version is available. Follows the same download+extract pattern as
 //! `install.rs` for rtk.
 
+use crate::config::download;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -65,6 +66,18 @@ fn current_exe_path() -> Result<PathBuf, String> {
     std::env::current_exe().map_err(|e| format!("cannot locate running binary: {e}"))
 }
 
+/// Clean up leftover .bak files from previous updates.
+fn cleanup_old_backups(exe_dir: &Path) {
+    if let Ok(entries) = fs::read_dir(exe_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name.to_string_lossy().ends_with(".exe.bak") {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
 /// Download and extract the release archive, returning the path to the cotrex binary inside it.
 fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
     let (name, ext) = asset_for(std::env::consts::OS, std::env::consts::ARCH).ok_or_else(|| {
@@ -77,19 +90,12 @@ fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
     let ver = tag.strip_prefix('v').unwrap_or(tag);
     let asset = format!("cotrex-{ver}-{name}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/{tag}/{asset}");
-    eprintln!("  downloading {asset} …");
 
+    eprintln!("  downloading {asset}");
     let archive = tmp.join(&asset);
-    let resp = ureq::get(&url)
-        .set("User-Agent", "cotrex")
-        .call()
-        .map_err(|e| format!("download failed: {e}"))?;
-    let mut reader = resp.into_reader();
-    let mut file = fs::File::create(&archive).map_err(|e| e.to_string())?;
-    std::io::copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
-    drop(file);
+    download::download_with_progress(&url, &archive)?;
 
-    eprintln!("  extracting …");
+    let sp = download::spinner("extracting");
     if ext == "zip" {
         let status = Command::new("powershell")
             .args([
@@ -104,6 +110,7 @@ fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
             .status()
             .map_err(|e| format!("powershell not available: {e}"))?;
         if !status.success() {
+            sp.finish_and_clear();
             return Err("extraction failed".into());
         }
     } else {
@@ -115,9 +122,11 @@ fn download_release(tag: &str, tmp: &Path) -> Result<PathBuf, String> {
             .status()
             .map_err(|e| format!("`tar` not available: {e}"))?;
         if !status.success() {
+            sp.finish_and_clear();
             return Err("extraction failed".into());
         }
     }
+    sp.finish_and_clear();
 
     find_bin(tmp, "cotrex")
         .or_else(|| find_bin(tmp, "cotrex.exe"))
@@ -155,36 +164,34 @@ pub fn run() -> Result<(), String> {
     eprintln!("cotrex {latest} is available (current: {current}).");
 
     let exe = current_exe_path()?;
+    let exe_dir = exe.parent().ok_or("cannot determine binary directory")?;
+
+    // Clean up leftovers from previous failed updates.
+    cleanup_old_backups(exe_dir);
 
     // Download to a temp directory next to the binary so we can replace in-place.
-    let tmp = exe
-        .parent()
-        .ok_or("cannot determine binary directory")?
-        .join(format!("cotrex-update-{}", std::process::id()));
+    let tmp = exe_dir.join(format!("cotrex-update-{}", std::process::id()));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
 
     let new_bin = download_release(&tag, &tmp)?;
 
-    // Back up the current binary before overwriting.
-    let backup = exe.with_extension("exe.bak");
-    if backup.exists() {
-        let _ = fs::remove_file(&backup);
-    }
-    fs::copy(&exe, &backup).map_err(|e| format!("backup failed: {e}"))?;
-
     // Replace the running binary. On Windows the running process locks the file,
     // so we rename the old one first (rename succeeds while the file is open).
-    let exe_name = exe.file_name().ok_or("bad exe path")?;
-    let dest = tmp.join(exe_name);
-    fs::copy(&exe, &dest).map_err(|e| e.to_string())?;
-    fs::remove_file(&exe).map_err(|e| format!("cannot remove old binary: {e}"))?;
-    fs::copy(&new_bin, &exe).map_err(|e| format!("cannot install new binary: {e}"))?;
+    let bak = exe.with_extension("exe.bak");
+    fs::rename(&exe, &bak).map_err(|e| format!("cannot rename old binary: {e}"))?;
+
+    if let Err(e) = fs::copy(&new_bin, &exe) {
+        // Rollback: rename backup back.
+        let _ = fs::rename(&bak, &exe);
+        let _ = fs::remove_dir_all(&tmp);
+        return Err(format!("cannot install new binary: {e}"));
+    }
 
     // Clean up.
     let _ = fs::remove_dir_all(&tmp);
-    let _ = fs::remove_file(&backup);
+    // Old .bak will be cleaned up on next update or reboot.
 
-    eprintln!("cotrex updated to {latest}.");
+    eprintln!("  \x1b[32m✓\x1b[0m cotrex updated to {latest}.");
     Ok(())
 }
 

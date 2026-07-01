@@ -2,6 +2,7 @@
 //! its execution backend on demand. Extraction shells out to the system `tar` (bsdtar on Windows
 //! handles .zip; tar auto-detects gzip on unix) — ponytail: no archive crates for this.
 
+use crate::config::download;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -96,23 +97,15 @@ fn asset_name() -> Result<&'static str, String> {
 pub fn install() -> Result<PathBuf, String> {
     let asset = asset_name()?;
     let url = download_url(asset);
-    eprintln!("Downloading rtk {RTK_VERSION} ({asset}) …");
 
     let tmp = std::env::temp_dir().join(format!("cotrex-rtk-{}", std::process::id()));
     fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let archive = tmp.join(asset);
 
-    // Download (ureq follows the GitHub release redirects to the CDN).
-    let resp = ureq::get(&url)
-        .set("User-Agent", "cotrex")
-        .call()
-        .map_err(|e| format!("download failed: {e}"))?;
-    let mut reader = resp.into_reader();
-    let mut file = fs::File::create(&archive).map_err(|e| e.to_string())?;
-    std::io::copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
-    drop(file);
+    eprintln!("  downloading rtk {RTK_VERSION}");
+    download::download_with_progress(&url, &archive)?;
 
-    // Extract in place.
+    let sp = download::spinner("extracting");
     let status = Command::new("tar")
         .arg("-xf")
         .arg(&archive)
@@ -121,8 +114,10 @@ pub fn install() -> Result<PathBuf, String> {
         .status()
         .map_err(|e| format!("`tar` not available for extraction: {e}"))?;
     if !status.success() {
+        sp.finish_and_clear();
         return Err("extraction failed".into());
     }
+    sp.finish_and_clear();
 
     let bin = find_bin(&tmp, rtk_bin_name()).ok_or("rtk binary not found in archive")?;
     let dest = rtk_install_path().ok_or("cannot determine data dir")?;
