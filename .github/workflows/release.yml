@@ -56,6 +56,7 @@ jobs:
         run: |
           VER="${{ inputs.version }}"; VER="${VER#v}"   # accept 1.0.0 or v1.0.0
           NAME="${{ matrix.name }}"
+          rm -rf dist
           mkdir dist
           if [ "${{ runner.os }}" = "Windows" ]; then
             7z a "dist/cotrex-${VER}-${NAME}.zip" ./target/release/cotrex.exe
