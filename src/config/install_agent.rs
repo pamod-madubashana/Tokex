@@ -2,35 +2,42 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Rules injected into every SKILL.md and AGENTS.md to enforce cotrex usage.
-const ENFORCEMENT_RULES: &str = r#"## CRITICAL: Tool Enforcement
+const ENFORCEMENT_RULES: &str = r#"## RULE 0: USE COTREX — NO EXCEPTIONS
 
-**Before executing ANY shell command**, check if a cotrex MCP tool can do it.
+**Every shell command MUST go through cotrex.** Not sometimes. Not when convenient. Every time.
 
-| Instead of this | Use this |
-|---|---|
-| `cargo build` | `cotrex_run` with `command: "cargo build"` |
-| `cargo test` | `cotrex_run` with `command: "cargo test"` |
-| `cargo test -p cotrex` | `cotrex_run` with `command: "cargo test -p cotrex"` |
-| `git status` | `cotrex_run` with `command: "git status"` |
-| `git diff` | `cotrex_run` with `command: "git diff"` |
-| `gh pr create` | `cotrex_run` with `command: "gh pr create"` |
-| multi-step build+test | `cotrex_delegate` or `cotrex_plan` |
+If you need to run `cargo build`, `git status`, `cargo test`, `git diff`, `gh pr create`, or ANY
+other command — use a cotrex MCP tool or the cotrex CLI. Never call the shell directly.
 
-**Fallback chain** (only when MCP tools are unavailable):
-1. `cotrex -m <command>` (CLI)
-2. `rtk <command>` (direct)
-3. Raw shell (last resort — loses normalization)
+### MCP tools (preferred — available in this session)
 
-**NEVER** use raw shell when cotrex MCP tools are available. This is not optional.
+| Task | Tool | Example |
+|------|------|---------|
+| Run any command | `cotrex_run` | `cotrex_run` with `command: "cargo test"` |
+| Multi-step work | `cotrex_delegate` | `cotrex_delegate` with `task: "build and test"` |
+| Plan a task | `cotrex_plan` | `cotrex_plan` with `task: "add feature X"` |
 
-## CRITICAL: Graphify First
+### CLI fallback (only if MCP tools are unavailable)
 
-**Before reading files or exploring the codebase**, query the knowledge graph first:
+```bash
+cotrex -m cargo build
+cotrex -m cargo test
+cotrex -m cargo test -p cotrex
+cotrex -m git status
+cotrex -m git diff
+```
+
+**Fallback chain**: `cotrex_run` → `cotrex -m <cmd>` → `rtk <cmd>` → raw shell (last resort).
+Raw shell loses normalization. Only use it when cotrex is completely unavailable.
+
+## RULE 1: GRAPHIFY FIRST
+
+Before reading files or exploring the codebase, query the knowledge graph:
 - `cotrex_graphify_query` — search for concepts, relationships, architecture
 - `cotrex_graphify_explain` — get details on a specific node
 - `cotrex_graphify_path` — find connections between concepts
 
-Only read specific files if graphify doesn't have the answer. Reading >3 files manually without trying graphify first wastes tokens.
+Reading >3 files manually without trying graphify first wastes tokens.
 "#;
 
 const SUPPORTED_AGENTS: &[(&str, &str)] = &[
@@ -269,7 +276,7 @@ description: "Cotrex RTK orchestration skills for {project_name}. Run commands, 
 
 {ENFORCEMENT_RULES}
 
-**IMPORTANT:** You are an AI agent. Always use cotrex via MCP (preferred) or CLI fallback.
+**IMPORTANT:** You are an AI agent. Every shell command MUST go through cotrex — MCP tools first, CLI fallback if MCP is unavailable. Never call the shell directly.
 
 ## 1. MCP (preferred)
 
@@ -342,7 +349,7 @@ cotrex -m "explain the architecture"
 }
 
 /// Marker to detect if enforcement rules are already present in AGENTS.md.
-const ENFORCEMENT_MARKER: &str = "## CRITICAL: Tool Enforcement";
+const ENFORCEMENT_MARKER: &str = "## RULE 0: USE COTREX";
 
 /// Inject enforcement rules into AGENTS.md if it exists and doesn't already have them.
 fn inject_agents_md_rules(project_dir: &Path) -> Result<(), String> {

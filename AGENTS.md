@@ -1,100 +1,41 @@
 # AGENTS.md
 
-Guidance for agentic coding agents working in this repository.
+## RULE 0: USE COTREX — NO EXCEPTIONS
 
-## CRITICAL: Tool Enforcement
+**Every shell command MUST go through cotrex.** Not sometimes. Not when convenient. Every time.
 
-**Before executing ANY shell command**, check if a cotrex MCP tool can do it.
+If you need to run `cargo build`, `git status`, `cargo test`, `git diff`, `gh pr create`, or ANY
+other command — use a cotrex MCP tool or the cotrex CLI. Never call the shell directly.
 
-| Instead of this | Use this |
-|---|---|
-| `cargo build` | `cotrex_run` with `command: "cargo build"` |
-| `cargo test` | `cotrex_run` with `command: "cargo test"` |
-| `cargo test -p cotrex` | `cotrex_run` with `command: "cargo test -p cotrex"` |
-| `git status` | `cotrex_run` with `command: "git status"` |
-| `git diff` | `cotrex_run` with `command: "git diff"` |
-| `gh pr create` | `cotrex_run` with `command: "gh pr create"` |
-| multi-step build+test | `cotrex_delegate` or `cotrex_plan` |
+### MCP tools (preferred — available in this session)
 
-**Fallback chain** (only when MCP tools are unavailable):
-1. `cotrex -m <command>` (CLI)
-2. `rtk <command>` (direct)
-3. Raw shell (last resort — loses normalization)
+| Task | Tool | Example |
+|------|------|---------|
+| Run any command | `cotrex_run` | `cotrex_run` with `command: "cargo test"` |
+| Multi-step work | `cotrex_delegate` | `cotrex_delegate` with `task: "build and test"` |
+| Plan a task | `cotrex_plan` | `cotrex_plan` with `task: "add feature X"` |
 
-**NEVER** use raw shell when cotrex MCP tools are available. This is not optional.
+### CLI fallback (only if MCP tools are unavailable)
 
-## CRITICAL: Graphify First
+```bash
+cotrex -m cargo build
+cotrex -m cargo test
+cotrex -m cargo test -p cotrex
+cotrex -m git status
+cotrex -m git diff
+```
 
-**Before reading files or exploring the codebase**, query the knowledge graph first:
+**Fallback chain**: `cotrex_run` → `cotrex -m <cmd>` → `rtk <cmd>` → raw shell (last resort).
+Raw shell loses normalization. Only use it when cotrex is completely unavailable.
+
+## RULE 1: GRAPHIFY FIRST
+
+Before reading files or exploring the codebase, query the knowledge graph:
 - `cotrex_graphify_query` — search for concepts, relationships, architecture
 - `cotrex_graphify_explain` — get details on a specific node
 - `cotrex_graphify_path` — find connections between concepts
 
-Only read specific files if graphify doesn't have the answer. Reading >3 files manually without trying graphify first wastes tokens.
-
-## Agent Rules
-
-- **Connect to cotrex via MCP.** Cotrex exposes tools (`run`, `delegate`, `plan`, `list_roles`, `set_agent`). Use them.
-- **If MCP is not available**, fall back to CLI: `cotrex -m <command>` (e.g. `cotrex -m cargo build`).
-- **If cotrex is not on PATH**, fall back to `rtk <command>` directly. Raw shell commands are a last resort.
-- **Never bypass the pipeline.** Cotrex normalizes output for agents — raw commands lose that.
-
-## MCP Server
-
-Start cotrex as an MCP server: `cotrex mcp`
-
-Communicates over stdin/stdout using newline-delimited JSON-RPC 2.0. The agent sends requests,
-cotrex responds with structured tool results.
-
-### Available Tools
-
-| Tool | Description |
-|------|-------------|
-| `run` | Execute a shell command through RTK. Returns normalized stdout/stderr with severity, exit code, and optional LLM insight. |
-| `set_agent` | Identify your platform (claude/codex/cursor/gemini/opencode) so graphify installs the right code-map skill. Call once. |
-| `list_roles` | List available roles (planner, coder, assistant, etc.) with their models. |
-| `delegate` | Offload a task to a role — the role's model runs commands and returns an analyzed answer. |
-| `plan` | Shorthand for `delegate` with the planner role. |
-
-### MCP Config (all platforms)
-
-Add to your agent's config file (e.g. `~/.claude/settings.json`, `.cursor/mcp.json`, `opencode.json`):
-```json
-{
-  "mcpServers": {
-    "cotrex": { "command": "cotrex", "args": ["mcp"] }
-  }
-}
-```
-
-### Example MCP Interaction
-
-```json
-→ {"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-← {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{}},"serverInfo":{"name":"cotrex","version":"1.2.0"}}}
-
-→ {"jsonrpc":"2.0","method":"notifications/initialized"}
-  (no response — notification)
-
-→ {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
-← {"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"run",...},{"name":"set_agent",...},...]}}
-
-→ {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"run","arguments":{"command":"cargo test"}}}
-← {"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"ok 2286 passed\n{\"type\":\"result\",\"status\":\"ok\",\"code\":0}"}],"isError":false}}
-```
-
-## CLI Fallback (when MCP is unavailable)
-
-```bash
-cotrex -m cargo build                       # build (must be warning-clean before committing)
-cotrex -m cargo test                        # all tests
-cotrex -m cargo test native_command_maps    # run a single test by name (substring match)
-cotrex -m cargo test -p cotrex               # CI-style: test only our crate, not vendored rtk
-cotrex -m cargo run -- run "git status"     # forward a command through rtk
-cotrex -m cargo run -- git status           # same — run subcommand optional
-cotrex -m script Scripts/rename.sh          # run a script via rtk
-cotrex -m update                            # check for newer release and install if available
-```
+Reading >3 files manually without trying graphify first wastes tokens.
 
 ## What this is
 
@@ -102,12 +43,13 @@ Cotrex is a **deterministic RTK orchestration layer** written in Rust. It normal
 stream output **without owning execution**. RTK (`rtk`) is bundled next to the cotrex binary;
 no separate install needed.
 
-## Build & Test Commands
+## Build & Test
 
 ```bash
 cotrex -m cargo build                       # build (must be warning-clean before committing)
 cotrex -m cargo test                        # all tests
-cotrex -m cargo test -p cotrex               # CI-style: test only our crate, not vendored rtk
+cotrex -m cargo test -p cotrex              # CI-style: test only our crate, not vendored rtk
+cotrex -m cargo test native_command_maps    # single test by name (substring match)
 ```
 
 **CI** (`.github/workflows/ci.yml`): runs `cargo test -p cotrex` on ubuntu-latest with
@@ -115,7 +57,6 @@ submodules checked out. Wait for green before merging.
 
 **Dependencies**: `rtk` and `graphify` are pinned git submodules under `vendor/`; clone with
 `--recursive`. The `Cargo.toml` workspace includes `vendor/rtk` as a default member.
-`cargo build` builds both cotrex and rtk into `target/release/`.
 
 ## Architecture Overview
 
