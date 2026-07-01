@@ -1,14 +1,19 @@
 //! graphify integration: cotrex keeps the code map fresh so agents only **read** it
 //! (`graphify-out/GRAPH_REPORT.md`, `graphify-out/wiki/`) and never spend a turn updating it.
 //!
-//! graphify is a Python tool (`pip install graphifyy`, run via `python -m graphify ...`, AST-only —
-//! no token cost). cotrex auto-installs it once and **registers its skill for the agent actually in
-//! use** (not just Claude): resolved from config, else env auto-detect, else by asking the user.
+//! graphify can run as either:
+//! 1. An embedded standalone binary (preferred, built with PyInstaller)
+//! 2. A Python package (`pip install graphifyy`, run via `python -m graphify ...`)
+//!
+//! cotrex auto-installs it once and **registers its skill for the agent actually in use**
+//! (not just Claude): resolved from config, else env auto-detect, else by asking the user.
 //! Everything here is best-effort: it never blocks or fails a cotrex run.
 
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+
+use crate::config::embedded_graphify;
 
 /// Does this command plausibly change source the map should re-read?
 /// ponytail: a skiplist of obvious read-only commands; everything else triggers an update. Not
@@ -50,32 +55,67 @@ fn py() -> &'static str {
     }
 }
 
+/// Resolve the graphify binary. Order: embedded → PATH → Python module fallback.
+/// Returns (binary_path, is_standalone) where is_standalone=true means it's a standalone
+/// executable (not `python -m graphify`).
+fn graphify_bin() -> (PathBuf, bool) {
+    // 1. Try embedded graphify binary
+    if let Some(path) = embedded_graphify::extract_graphify() {
+        if path.is_file() {
+            return (path, true);
+        }
+    }
+
+    // 2. Try graphify on PATH
+    let graphify_name = if cfg!(windows) {
+        "graphify.exe"
+    } else {
+        "graphify"
+    };
+    if run_quiet(graphify_name, &["--version"]) {
+        return (PathBuf::from(graphify_name), true);
+    }
+
+    // 3. Fall back to Python module
+    let py = py();
+    (PathBuf::from(py), false)
+}
+
+/// Run graphify command with the appropriate binary.
+fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
+    let (bin, is_standalone) = graphify_bin();
+    let mut cmd_args = Vec::new();
+
+    if is_standalone {
+        // Standalone binary: run directly
+        cmd_args.extend_from_slice(args);
+    } else {
+        // Python module: run as `python -m graphify ...`
+        cmd_args.push("-m");
+        cmd_args.push("graphify");
+        cmd_args.extend_from_slice(args);
+    }
+
+    let mut cmd = Command::new(&bin);
+    cmd.args(&cmd_args);
+
+    if inherit_stdio {
+        cmd.stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit());
+    } else {
+        cmd.stdout(Stdio::null()).stderr(Stdio::null());
+    }
+
+    cmd.status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 fn run_quiet(prog: &str, args: &[&str]) -> bool {
     Command::new(prog)
         .args(args)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Run inheriting this process's stdio (visible under `cotrex graph`/`cotrex setup`, silent when the
-/// bootstrap runs detached with null stdio).
-fn run_inherit(prog: &str, args: &[&str]) -> bool {
-    Command::new(prog)
-        .args(args)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Run silently (output captured), returning success.
-fn run_capture(prog: &str, args: &[&str]) -> bool {
-    Command::new(prog)
-        .args(args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
@@ -119,8 +159,27 @@ fn current_project_dir() -> Option<PathBuf> {
     std::env::current_dir().ok().filter(|d| is_project_dir(d))
 }
 
-/// Make graphifyy importable, auto-`pip install` once (cached via the package marker).
+/// Make graphify available, auto-`pip install` once (cached via the package marker).
+/// Returns true if graphify is available (either embedded or as a Python package).
 fn ensure_package(py: &str, verbose: bool) -> bool {
+    // Check if embedded binary is available
+    if let Some(path) = embedded_graphify::extract_graphify() {
+        if path.is_file() {
+            return true;
+        }
+    }
+
+    // Check if graphify is on PATH
+    let graphify_name = if cfg!(windows) {
+        "graphify.exe"
+    } else {
+        "graphify"
+    };
+    if run_quiet(graphify_name, &["--version"]) {
+        return true;
+    }
+
+    // Check if Python package is installed
     if exists(data_file(".graphify-ok")) {
         return true;
     }
@@ -157,7 +216,7 @@ pub fn current_agent() -> Option<String> {
 
 /// Register the graphify skill for the agent in use (once, via the skill marker). Resolves the
 /// platform from config/env; if unknown, asks the user when interactive, otherwise leaves guidance.
-fn register_skill(py: &str, verbose: bool, prompt_when_unknown: bool) {
+fn register_skill(_py: &str, verbose: bool, prompt_when_unknown: bool) {
     if exists(data_file(".graphify-skill")) {
         return;
     }
@@ -193,10 +252,10 @@ fn register_skill(py: &str, verbose: bool, prompt_when_unknown: bool) {
     // graphify's CLI is inconsistent: some platforms use `--platform`, others a subcommand. Claude
     // is the bare default. Try the most likely form, then fall back.
     let ok = if platform == "claude" {
-        run_inherit(py, &["-m", "graphify", "install"])
+        run_graphify(&["install"], true)
     } else {
-        run_inherit(py, &["-m", "graphify", "install", "--platform", &platform])
-            || run_inherit(py, &["-m", "graphify", &platform, "install"])
+        run_graphify(&["install", "--platform", &platform], true)
+            || run_graphify(&[&platform, "install"], true)
     };
     if ok {
         touch(data_file(".graphify-skill"));
@@ -214,12 +273,9 @@ pub fn auto_update(command: &str) {
     if current_project_dir().is_none() {
         return;
     }
-    if exists(data_file(".graphify-ok")) {
-        let _ = Command::new(py())
-            .args(["-m", "graphify", "update", "."])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+    if ensure_package(&py(), false) {
+        // Run graphify update in background (fire-and-forget)
+        let _ = run_graphify(&["update", "."], false);
     } else {
         bootstrap_detached();
     }
@@ -259,7 +315,6 @@ pub fn setup_steps() -> Result<Vec<(&'static str, Box<dyn FnOnce() -> Result<(),
 
     let ensure_py = py.to_string();
     let register_py = py.to_string();
-    let update_py = py.to_string();
 
     Ok(vec![
         (
@@ -283,7 +338,7 @@ pub fn setup_steps() -> Result<Vec<(&'static str, Box<dyn FnOnce() -> Result<(),
         (
             "building code map",
             Box::new(move || {
-                if run_capture(&update_py, &["-m", "graphify", "update", "."]) {
+                if run_graphify(&["update", "."], true) {
                     Ok(())
                 } else {
                     Err("graphify update failed".into())
@@ -298,14 +353,14 @@ fn update_blocking_with_prompt(prompt_when_unknown: bool, verbose: bool) -> Resu
         "not in a project directory; skipping graphify code-map refresh".to_string()
     })?;
     let py = py();
-    if !ensure_package(py, verbose) {
+    if !ensure_package(&py, verbose) {
         return Err("graphify unavailable — need Python + pip to install graphifyy".into());
     }
-    register_skill(py, verbose, prompt_when_unknown);
+    register_skill(&py, verbose, prompt_when_unknown);
     if verbose {
         eprintln!("cotrex: refreshing graphify code map in {}", cwd.display());
     }
-    if run_inherit(py, &["-m", "graphify", "update", "."]) {
+    if run_graphify(&["update", "."], true) {
         Ok(())
     } else {
         Err("graphify update failed".into())
