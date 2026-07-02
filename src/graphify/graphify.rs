@@ -82,6 +82,7 @@ fn graphify_bin() -> (PathBuf, bool) {
 }
 
 /// Run graphify command with the appropriate binary. Returns true if successful.
+/// Passes cotrex LLM config as env vars so graphify can use the same API backend.
 fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
     let (bin, is_standalone) = graphify_bin();
     let mut cmd_args = Vec::new();
@@ -96,6 +97,19 @@ fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
 
     let mut cmd = Command::new(&bin);
     cmd.args(&cmd_args);
+
+    // Pass cotrex LLM config to graphify as env vars
+    let cfg = crate::config::load();
+    if !cfg.llm_key.is_empty() {
+        cmd.env("OPENAI_API_KEY", &cfg.llm_key);
+    }
+    if !cfg.llm_url.is_empty() {
+        // graphify uses OPENAI_BASE_URL for OpenAI-compatible endpoints
+        cmd.env("OPENAI_BASE_URL", &cfg.llm_url);
+    }
+    if !cfg.llm_model.is_empty() {
+        cmd.env("OPENAI_MODEL", &cfg.llm_model);
+    }
 
     if inherit_stdio {
         cmd.stdout(std::process::Stdio::inherit())
