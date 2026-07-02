@@ -15,7 +15,13 @@
 ## RULE 1: GRAPHIFY FIRST
 
 Before reading files or exploring the codebase, read `graphify-out/GRAPH_REPORT.md` first.
-For deeper questions, use `cotrex_graphify`, `cotrex_graphify_explain`, `cotrex_graphify_path`.
+For deeper questions, run graphify CLI commands (NOT MCP tools):
+
+```bash
+cotrex -m graphify query "architecture overview"    # BFS traversal
+cotrex -m graphify explain "Intent"                  # node details
+cotrex -m graphify path "Intent" "RTK"              # shortest path
+```
 
 Reading >3 files manually without trying graphify first wastes tokens.
 

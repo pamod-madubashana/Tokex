@@ -144,7 +144,7 @@ fn tools_list() -> Value {
         },
     }, {
         "name": "graphify",
-        "description": "Query the graphify knowledge graph using BFS or DFS traversal. Returns nodes and edges relevant to the question.",
+        "description": "Query the graphify knowledge graph using BFS or DFS traversal. PREFERRED METHOD: use CLI instead - 'cotrex -m graphify query \"...\"'. This MCP tool exists for completeness but agents should read GRAPH_REPORT.md or use CLI commands.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -156,7 +156,7 @@ fn tools_list() -> Value {
         },
     }, {
         "name": "graphify_path",
-        "description": "Find the shortest path between two concepts in the knowledge graph.",
+        "description": "Find shortest path between two concepts. PREFERRED: use CLI 'cotrex -m graphify path \"A\" \"B\"'.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -167,7 +167,7 @@ fn tools_list() -> Value {
         },
     }, {
         "name": "graphify_explain",
-        "description": "Get a plain-language explanation of a node and all its connections in the knowledge graph.",
+        "description": "Explain a node and its connections. PREFERRED: use CLI 'cotrex -m graphify explain \"Node\"'.",
         "inputSchema": {
             "type": "object",
             "properties": {

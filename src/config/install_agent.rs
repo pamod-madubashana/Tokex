@@ -32,12 +32,19 @@ Raw shell loses normalization. Only use it when cotrex is completely unavailable
 
 ## RULE 1: GRAPHIFY FIRST
 
-Before reading files or exploring the codebase, query the knowledge graph:
-- `cotrex_graphify` — search for concepts, relationships, architecture
-- `cotrex_graphify_explain` — get details on a specific node
-- `cotrex_graphify_path` — find connections between concepts
+Before reading files or exploring the codebase, read `graphify-out/GRAPH_REPORT.md` first.
+For deeper questions, run graphify CLI commands (NOT MCP tools):
+
+```bash
+cotrex -m graphify query "architecture overview"    # BFS traversal
+cotrex -m graphify explain "Intent"                  # node details
+cotrex -m graphify path "Intent" "RTK"              # shortest path
+```
 
 Reading >3 files manually without trying graphify first wastes tokens.
+
+**IMPORTANT:** `cotrex_graphify`, `cotrex_graphify_explain`, `cotrex_graphify_path` are for
+saving Q&A results back into the graph — NOT for asking questions. Never call them to query.
 "#;
 
 const SUPPORTED_AGENTS: &[(&str, &str)] = &[
