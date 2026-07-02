@@ -55,18 +55,12 @@ fn py() -> &'static str {
     }
 }
 
-/// Resolve the graphify binary. Order: embedded → PATH → Python module fallback.
+/// Resolve the graphify binary. Order: PATH → Python module fallback.
+/// The embedded binary is skipped because it gets stale between cotrex releases.
 /// Returns (binary_path, is_standalone) where is_standalone=true means it's a standalone
 /// executable (not `python -m graphify`).
 fn graphify_bin() -> (PathBuf, bool) {
-    // 1. Try embedded graphify binary
-    if let Some(path) = embedded_graphify::extract_graphify() {
-        if path.is_file() {
-            return (path, true);
-        }
-    }
-
-    // 2. Try graphify on PATH
+    // 1. Try graphify on PATH (usually newest version)
     let graphify_name = if cfg!(windows) {
         "graphify.exe"
     } else {
@@ -76,7 +70,7 @@ fn graphify_bin() -> (PathBuf, bool) {
         return (PathBuf::from(graphify_name), true);
     }
 
-    // 3. Fall back to Python module
+    // 2. Fall back to Python module
     let py = py();
     (PathBuf::from(py), false)
 }
@@ -104,8 +98,11 @@ fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
         cmd.env("OPENAI_API_KEY", &cfg.llm_key);
     }
     if !cfg.llm_url.is_empty() {
-        // graphify uses OPENAI_BASE_URL for OpenAI-compatible endpoints
-        cmd.env("OPENAI_BASE_URL", &cfg.llm_url);
+        // graphify expects base URL without /chat/completions suffix
+        let base_url = cfg.llm_url
+            .trim_end_matches("/chat/completions")
+            .trim_end_matches('/');
+        cmd.env("OPENAI_BASE_URL", base_url);
     }
     if !cfg.llm_model.is_empty() {
         cmd.env("OPENAI_MODEL", &cfg.llm_model);

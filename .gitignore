@@ -3,7 +3,6 @@
 /dist
 Cargo.lock
 cotrex-graph.json
-graphify-out/
 docs/node_modules
 docs/build
 docs/.docusaurus
