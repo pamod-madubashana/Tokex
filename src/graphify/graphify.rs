@@ -107,6 +107,9 @@ fn run_graphify(args: &[&str], inherit_stdio: bool) -> bool {
     if !cfg.llm_model.is_empty() {
         cmd.env("OPENAI_MODEL", &cfg.llm_model);
     }
+    // Workaround: graphify 0.9.4 PyInstaller bundle passes --multiprocessing-fork
+    // to its own CLI on Windows, crashing all workers. Disable fork mode.
+    cmd.env("PYTHONMULTIPROCESSING_FORK", "0");
 
     if inherit_stdio {
         cmd.stdout(std::process::Stdio::inherit())
@@ -191,16 +194,9 @@ fn current_project_dir() -> Option<PathBuf> {
 }
 
 /// Make graphify available, auto-`pip install` once (cached via the package marker).
-/// Returns true if graphify is available (either embedded or as a Python package).
+/// Returns true if graphify is available (either as a CLI binary or Python package).
 fn ensure_package(py: &str, verbose: bool) -> bool {
-    // Check if embedded binary is available
-    if let Some(path) = embedded_graphify::extract_graphify() {
-        if path.is_file() {
-            return true;
-        }
-    }
-
-    // Check if graphify is on PATH
+    // 1. Try graphify on PATH (skip embedded — it's often stale/broken)
     let graphify_name = if cfg!(windows) {
         "graphify.exe"
     } else {
@@ -210,7 +206,7 @@ fn ensure_package(py: &str, verbose: bool) -> bool {
         return true;
     }
 
-    // Check if Python package is installed
+    // 2. Check if Python package is installed
     if exists(data_file(".graphify-ok")) {
         return true;
     }
@@ -451,7 +447,9 @@ fn update_blocking_with_prompt(prompt_when_unknown: bool, verbose: bool) -> Resu
     if !ensure_package(py, verbose) {
         return Err("graphify unavailable — need Python + pip to install graphifyy".into());
     }
-    register_skill(py, verbose, prompt_when_unknown);
+    // Skip register_skill here — it was already done during `cotrex install`.
+    // Running `graphify install` on Windows triggers a multiprocessing bug that
+    // corrupts the process pool and causes the subsequent update to produce 0 nodes.
     if verbose {
         eprintln!("cotrex: refreshing graphify code map in {}", cwd.display());
     }
